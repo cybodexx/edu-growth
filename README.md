@@ -3,7 +3,18 @@
 
 > **Team Ctrl Freaks** · Domain: EdTech / Machine Learning · Doc Version 1.0
 
-Edu Growth analyzes a **99-column student performance dataset** covering six subjects, four practical labs, attendance, assignment behavior, extracurricular participation, and prior CGPA. It is designed to surface subject and unit-level patterns, estimate the final semester grade from historical examples, and identify unusual records for review. The current spreadsheet is a student-level snapshot; it does not contain teacher efficacy, risk labels, or assessment dates.
+**Edu Growth** is an AI-driven student performance and academic analytics system built to analyze student-level academic data and identify meaningful performance patterns.
+
+The project uses a **99-column student performance dataset** containing attendance, subject-wise assessments, assignments, quizzes, practical/lab performance, extracurricular participation, previous CGPA, and final semester grade.
+
+The current data analysis pipeline has completed **Exploratory Data Analysis (EDA), data cleaning, preprocessing, and Principal Component Analysis (PCA)**.
+
+During data cleaning, the original dataset of **49,000 rows** was reduced to **46,500 rows** after removing duplicate records. The cleaned dataset was then used for further analysis and dimensionality reduction.
+
+PCA was performed on **97 numerical features** after excluding identifiers, categorical fields, and the target variable. Using StandardScaler and PCA, the feature space was reduced from **97 features to 76 principal components while retaining approximately 90.01% of the total variance**.
+
+The project is being developed progressively, with further machine learning and application components planned for later stages.
+.
 
 ---
 
@@ -45,51 +56,71 @@ Edu Growth analyzes a **99-column student performance dataset** covering six sub
 
 ```mermaid
 flowchart TD
-    A["Google Sheet / CSV<br/>99 student fields"] --> B["Schema validation<br/>IDs, types, ranges, missingness"]
-    B --> C["EDA and preprocessing<br/>encode categories, impute, scale"]
-    C --> D["Subject and unit analysis"]
-    C --> E["PCA feature transformation"]
-    E --> F["Grade model<br/>target: final_semester_grade"]
-    E --> G["Exploratory clustering<br/>K-Means"]
-    E --> H["Outlier review<br/>Isolation Forest"]
-    D --> I["Reviewed analytics and reports"]
-    F --> I
-    G --> I
-    H --> I
+ ## 🗺 Analysis Workflow
+
+```mermaid
+flowchart TD
+    A["Raw Dataset<br/>49,000 rows × 99 columns"] --> B["EDA & Data Cleaning"]
+    B --> C["Cleaned Dataset<br/>46,500 rows"]
+    C --> D["Exploratory Analysis<br/>Univariate • Bivariate • Multivariate"]
+    C --> E["PCA Preparation<br/>97 numerical features"]
+    E --> F["StandardScaler"]
+    F --> G["PCA<br/>76 Components"]
+    G --> H["~90.01% Variance Retained"]
+    H --> I["PCA Transformed Dataset<br/>46,500 × 76"]
+    I --> J["Further ML Analysis<br/>Planned"]
 ```
 
-## 📋 Dataset: 99 Columns
+### 📋 Dataset: 99 Columns
 
-**Source:** [Edu Growth student dataset (Google Sheets)](https://docs.google.com/spreadsheets/d/18E6kDb3bGOOatyn9IRaZRoQnjmRVLRNUnkMCi7aCUPo/edit?usp=sharing). Export a CSV copy to `data/raw/` before running analysis. The schema groups below add up to 99 columns.
+**Source:** Edu Growth student dataset (Google Sheets). The dataset contains academic and student-level information used for performance analysis.
 
-| Group | Count | Columns |
-|---|---:|---|
-| Student information and add-ons | 11 | `roll_no`, `full_name`, `class_section`, `overall_attendance_pct`, `theory_attendance_pct`, `practical_attendance_pct`, `previous_cgpa`, `medical_leave_days`, `society_participation_pc`, `sports_activity_level`, `final_semester_grade` |
-| Subject attendance | 6 | `coa_attendance_pct`, `maths4_attendance_pct`, `dstl_attendance_pct`, `ds_attendance_pct`, `python_attendance_pct`, `cyber_attendance_pct` |
-| Lab attendance | 4 | `lab_ds_attendance_pct`, `lab_python_attendance_pct`, `lab_coa_attendance_pct`, `lab_cyber_attendance_pct` |
-| COA assessments | 11 | `coa_st1_marks`, `coa_st2_marks`, `coa_put_marks`, `coa_unit_1_marks`–`coa_unit_5_marks`, `coa_assignment_score`, `coa_assignment_delay_hours`, `coa_quiz_score` |
-| Maths4 assessments | 11 | `maths4_st1_marks`, `maths4_st2_marks`, `maths4_put_marks`, `maths4_unit_1_marks`–`maths4_unit_5_marks`, `maths4_assignment_score`, `maths4_assignment_delay_hours`, `maths4_quiz_score` |
-| DSTL assessments | 11 | `dstl_st1_marks`, `dstl_st2_marks`, `dstl_put_marks`, `dstl_unit_1_marks`–`dstl_unit_5_marks`, `dstl_assignment_score`, `dstl_assignment_delay_hours`, `dstl_quiz_score` |
-| DS assessments | 11 | `ds_st1_marks`, `ds_st2_marks`, `ds_put_marks`, `ds_unit_1_marks`–`ds_unit_5_marks`, `ds_assignment_score`, `ds_assignment_delay_hours`, `ds_quiz_score` |
-| Python assessments | 11 | `python_st1_marks`, `python_st2_marks`, `python_put_marks`, `python_unit_1_marks`–`python_unit_5_marks`, `python_assignment_score`, `python_assignment_delay_hours`, `python_quiz_score` |
-| Cybersecurity assessments | 11 | `cyber_st1_marks`, `cyber_st2_marks`, `cyber_put_marks`, `cyber_unit_1_marks`–`cyber_unit_5_marks`, `cyber_assignment_score`, `cyber_assignment_delay_hours`, `cyber_quiz_score` |
-| Lab performance | 12 | For each of `ds`, `python`, `coa`, and `cyber`: `lab_<subject>_execution_score`, `lab_<subject>_viva_score`, `lab_<subject>_submission_delay_hours` |
-| **Total** | **99** | Includes `final_semester_grade`, the supervised-learning target |
+The original dataset contains **49,000 rows and 99 columns**. The schema is organized into the following groups:
 
-The source sheet's actual value formats, score scales, missing-value conventions, and row count must be profiled during EDA. Do not infer scale limits or category encodings from the column names alone.
+| Group                           |  Count | Columns                                                                                                                                                                                                                                    |
+| ------------------------------- | -----: | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Student information and add-ons |     11 | `roll_no`, `full_name`, `class_section`, `overall_attendance_pct`, `theory_attendance_pct`, `practical_attendance_pct`, `previous_cgpa`, `medical_leave_days`, `society_participation_pc`, `sports_activity_level`, `final_semester_grade` |
+| Subject attendance              |      6 | `coa_attendance_pct`, `maths4_attendance_pct`, `dstl_attendance_pct`, `ds_attendance_pct`, `python_attendance_pct`, `cyber_attendance_pct`                                                                                                 |
+| Lab attendance                  |      4 | `lab_ds_attendance_pct`, `lab_python_attendance_pct`, `lab_coa_attendance_pct`, `lab_cyber_attendance_pct`                                                                                                                                 |
+| COA assessments                 |     11 | `coa_st1_marks`, `coa_st2_marks`, `coa_put_marks`, `coa_unit_1_marks`–`coa_unit_5_marks`, `coa_assignment_score`, `coa_assignment_delay_hours`, `coa_quiz_score`                                                                           |
+| Maths4 assessments              |     11 | `maths4_st1_marks`, `maths4_st2_marks`, `maths4_put_marks`, `maths4_unit_1_marks`–`maths4_unit_5_marks`, `maths4_assignment_score`, `maths4_assignment_delay_hours`, `maths4_quiz_score`                                                   |
+| DSTL assessments                |     11 | `dstl_st1_marks`, `dstl_st2_marks`, `dstl_put_marks`, `dstl_unit_1_marks`–`dstl_unit_5_marks`, `dstl_assignment_score`, `dstl_assignment_delay_hours`, `dstl_quiz_score`                                                                   |
+| DS assessments                  |     11 | `ds_st1_marks`, `ds_st2_marks`, `ds_put_marks`, `ds_unit_1_marks`–`ds_unit_5_marks`, `ds_assignment_score`, `ds_assignment_delay_hours`, `ds_quiz_score`                                                                                   |
+| Python assessments              |     11 | `python_st1_marks`, `python_st2_marks`, `python_put_marks`, `python_unit_1_marks`–`python_unit_5_marks`, `python_assignment_score`, `python_assignment_delay_hours`, `python_quiz_score`                                                   |
+| Cybersecurity assessments       |     11 | `cyber_st1_marks`, `cyber_st2_marks`, `cyber_put_marks`, `cyber_unit_1_marks`–`cyber_unit_5_marks`, `cyber_assignment_score`, `cyber_assignment_delay_hours`, `cyber_quiz_score`                                                           |
+| Lab performance                 |     12 | For `ds`, `python`, `coa`, and `cyber`: execution score, viva score, and submission delay                                                                                                                                                  |
+| **Total**                       | **99** | Includes `final_semester_grade` as the target variable                                                                                                                                                                                     |
 
-## 📊 Analysis Capabilities
+### 🧹 Data Cleaning and EDA Status
 
-- **Student and cohort summaries:** compare attendance, prior CGPA, marks, labs, and participation overall and by `class_section`.
-- **Subject and unit diagnostics:** compare ST1, ST2, PUT, unit marks, assignment scores/delays, and quiz scores for each subject.
-- **Lab diagnostics:** summarize execution, viva, attendance, and submission-delay measures for each lab.
-- **Grade prediction:** predict `final_semester_grade` from eligible pre-outcome fields; do not include identifiers or the target among predictors.
-- **Exploratory PCA and clustering:** reduce correlated numeric features and examine student groupings; clusters require interpretation and validation.
-- **Anomaly review:** use Isolation Forest to flag unusual feature combinations for a person to inspect. An anomaly score is not a validated risk label or diagnosis.
+The initial dataset contained **49,000 rows**. During preprocessing:
 
-This is a cross-sectional dataset unless additional dated snapshots are supplied. It cannot establish learning velocity, recovery after interventions, or sudden changes over time. It contains no teacher identifiers or teacher outcomes, so teacher-efficacy scoring and automatic faculty assignment are not supported. Peer-mentor suggestions would also need explicit eligibility, capacity, and safeguarding rules before implementation.
+* **2,500 duplicate records** were removed.
+* The cleaned dataset contains **46,500 rows and 99 original columns**.
+* Text and categorical values were cleaned and standardized.
+* Invalid values were identified and handled.
+* Missing values were treated using appropriate methods.
+* Outliers were identified using the **IQR method** without directly deleting the detected observations.
+* `overall_attendance_pct` was converted from percentage-formatted values into numerical values.
+* Categorical features such as `class_section` and `sports_activity_level` were standardized.
+* Univariate, bivariate, and multivariate analysis was performed.
+* Correlation and outlier analysis were also performed.
 
----
+The cleaned dataset was exported as:
+
+`edu_growth_cleaned.csv`
+
+### 📊 Current Analysis Capabilities
+
+* **Student and cohort analysis:** Analyze attendance, previous CGPA, marks, laboratory performance, and participation patterns.
+* **Subject and assessment analysis:** Compare ST1, ST2, PUT, unit tests, assignments, quizzes, and other assessment patterns across subjects.
+* **Lab performance analysis:** Analyze execution, viva, attendance, and submission-delay patterns.
+* **PCA-based dimensionality reduction:** PCA was performed on **97 numerical features** after excluding identifiers, categorical fields, and the target variable. The feature space was reduced to **76 principal components while retaining approximately 90.01% variance**.
+* **Grade prediction:** Planned for a later stage using `final_semester_grade` as the target variable.
+* **Student clustering:** Planned for a later stage to identify meaningful student groups.
+* **Anomaly detection:** Planned for a later stage to identify unusual feature combinations.
+
+> **Note:** The current dataset is cross-sectional. Therefore, conclusions about learning velocity, intervention recovery, or changes over time require additional dated student records.
 
 ## 🤖 Machine Learning Models
 
