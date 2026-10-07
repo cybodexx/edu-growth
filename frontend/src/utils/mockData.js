@@ -1,242 +1,127 @@
-/**
- * Edu Growth MVP - Mock Dataset
- * Architecture: src/utils/mockData.ts
- * Swiss Industrial Dark Theme Data Model
- */
+// src/utils/mockData.js
+// VIVA TIP: Yeh file ek "Dummy Database" hai. Jab FastAPI backend live hoga, 
+// toh humein UI components change nahi karne padenge, bas in variables ki jagah fetch() lagana hoga.
 
-export interface UnitPerformance {
-  unit: string;
-  st1: number;
-  st2: number;
-  put: number;
-  benchmark: number;
-  velocity: number; // Delta vs previous milestone
-}
+export const dataMeta = {
+  source: 'mock',
+  lastSynced: '06 Oct 2026',
+};
 
-export interface AttendanceRecord {
-  day: string;
-  date: string;
-  status: 'present' | 'absent' | 'late';
-  percentage: number;
-}
+/* ========================================================= */
+/* 1. STUDENT VIEW DATA                                      */
+/* ========================================================= */
 
-export interface AssignmentMetric {
-  id: string;
-  title: string;
-  dueDate: string;
-  status: 'on_time' | 'delayed' | 'pending';
-  delayDays: number;
-  gradeScore: number;
-}
-
-export interface RetentionMetric {
-  concept: string;
-  unit: string;
-  retentionScore: number; // 0 - 100
-  decayRate: string; // e.g. "Low", "Moderate", "Critical"
-  status: 'stable' | 'warning' | 'critical';
-}
-
-export interface StudentProfile {
-  id: string;
-  name: string;
-  rollNo: string;
-  batch: string;
-  overallAttendance: number;
-  currentCgpa: number;
-  learningVelocityIndex: number;
-  units: UnitPerformance[];
-  attendanceHistory: AttendanceRecord[];
-  assignments: AssignmentMetric[];
-  retentionIndex: RetentionMetric[];
-}
-
-export interface TeacherStudentRow {
-  id: string;
-  name: string;
-  rollNo: string;
-  attendance: number;
-  stAvg: number;
-  putScore: number;
-  cgpa: number;
-  riskStatus: 'critical' | 'warning' | 'safe';
-  riskReason: string;
-  weakestUnit: string;
-  assignedMentor: string;
-  suggestedMentor: string;
-  velocityTrend: 'up' | 'down' | 'flat';
-}
-
-export interface TeacherBatchOverview {
-  batchId: string;
-  courseName: string;
-  totalStudents: number;
-  batchAvgCgpa: number;
-  batchAttendanceAvg: number;
-  atRiskCount: number;
-  stPassRate: number;
-  efficacyScore: number; // 0 - 100
-  benchmarkCgpa: number;
-  students: TeacherStudentRow[];
-  mentorPool: {
-    name: string;
-    specialization: string;
-    loadCount: number;
-    rating: number;
-  }[];
-}
-
-export const studentMockData: StudentProfile = {
-  id: 'std_4091',
+// Basic student profile (ML Model yahan predictedCgpa update karta hai)
+export const currentStudent = {
+  id: 'STU-2241',
+  rollNumber: '2201640100182',
   name: 'Aarav Sharma',
-  rollNo: '21CS084',
-  batch: 'CS-IV A (Systems & Distributed)',
-  overallAttendance: 88.4,
-  currentCgpa: 8.42,
-  learningVelocityIndex: +4.8,
-  units: [
-    { unit: 'Unit 1: Memory & Pointers', st1: 64, st2: 70, put: 72, benchmark: 65, velocity: 0 },
-    { unit: 'Unit 2: Kernel Concurrency', st1: 72, st2: 78, put: 81, benchmark: 68, velocity: +9 },
-    { unit: 'Unit 3: Distributed Consensus', st1: 58, st2: 66, put: 70, benchmark: 70, velocity: -11 },
-    { unit: 'Unit 4: LSM-Trees & Storage', st1: 82, st2: 86, put: 91, benchmark: 72, velocity: +21 },
-    { unit: 'Unit 5: Fault-Tolerant Raft', st1: 88, st2: 92, put: 94, benchmark: 75, velocity: +3 },
-  ],
-  attendanceHistory: [
-    { day: 'D1', date: 'Oct 01', status: 'present', percentage: 100 },
-    { day: 'D2', date: 'Oct 02', status: 'present', percentage: 100 },
-    { day: 'D3', date: 'Oct 03', status: 'late', percentage: 75 },
-    { day: 'D4', date: 'Oct 04', status: 'present', percentage: 100 },
-    { day: 'D5', date: 'Oct 05', status: 'present', percentage: 100 },
-    { day: 'D6', date: 'Oct 08', status: 'absent', percentage: 0 },
-    { day: 'D7', date: 'Oct 09', status: 'present', percentage: 100 },
-    { day: 'D8', date: 'Oct 10', status: 'present', percentage: 100 },
-    { day: 'D9', date: 'Oct 11', status: 'present', percentage: 100 },
-    { day: 'D10', date: 'Oct 12', status: 'present', percentage: 100 },
-    { day: 'D11', date: 'Oct 15', status: 'late', percentage: 75 },
-    { day: 'D12', date: 'Oct 16', status: 'present', percentage: 100 },
-    { day: 'D13', date: 'Oct 17', status: 'present', percentage: 100 },
-    { day: 'D14', date: 'Oct 18', status: 'present', percentage: 100 },
-  ],
-  assignments: [
-    { id: 'asg_01', title: 'Malloc Implementations & Valgrind', dueDate: 'Sep 12', status: 'on_time', delayDays: 0, gradeScore: 92 },
-    { id: 'asg_02', title: 'POSIX Threads Mutex Benchmarks', dueDate: 'Sep 24', status: 'on_time', delayDays: 0, gradeScore: 88 },
-    { id: 'asg_03', title: 'Paxos Log Replication Protocol', dueDate: 'Oct 04', status: 'delayed', delayDays: 3, gradeScore: 71 },
-    { id: 'asg_04', title: 'SSTable Compaction Pipeline', dueDate: 'Oct 14', status: 'on_time', delayDays: 0, gradeScore: 95 },
-  ],
-  retentionIndex: [
-    { concept: 'Vector Clock Serialization', unit: 'Unit 3', retentionScore: 54, decayRate: 'Critical', status: 'critical' },
-    { concept: 'Write-Ahead Log Checkpointing', unit: 'Unit 4', retentionScore: 89, decayRate: 'Low', status: 'stable' },
-    { concept: 'Deadlock Detection in Kernel', unit: 'Unit 2', retentionScore: 76, decayRate: 'Moderate', status: 'warning' },
-    { concept: 'Quorum Read/Write Invariants', unit: 'Unit 5', retentionScore: 94, decayRate: 'Low', status: 'stable' },
-  ],
+  program: 'B.Tech CSE',
+  semester: 5,
+  section: 'C',
+  cgpa: 7.42,
+  predictedCgpa: 7.68, // ML output (Expected CGPA)
+  facultyMentor: 'Dr. Neha Gupta',
 };
 
-export const teacherBatchMockData: TeacherBatchOverview = {
-  batchId: 'BATCH-2025-CS-IV',
-  courseName: 'CS402: Distributed Operating Systems',
-  totalStudents: 48,
-  batchAvgCgpa: 7.82,
-  batchAttendanceAvg: 83.1,
-  atRiskCount: 6,
-  stPassRate: 91.6,
-  efficacyScore: 87.4,
-  benchmarkCgpa: 7.50,
-  mentorPool: [
-    { name: 'Dr. V. Nambiar', specialization: 'Distributed Systems & Consensus', loadCount: 6, rating: 4.9 },
-    { name: 'Prof. Sarah Jenkins', specialization: 'OS Kernels & Concurrency', loadCount: 9, rating: 4.7 },
-    { name: 'Dr. Kevin Zhao', specialization: 'Storage Architectures & LSM', loadCount: 4, rating: 4.8 },
-    { name: 'Prof. Elena Rostova', specialization: 'Algorithms & Discrete Math', loadCount: 8, rating: 4.6 },
-  ],
-  students: [
-    {
-      id: 'std_4091',
-      name: 'Aarav Sharma',
-      rollNo: '21CS084',
-      attendance: 88.4,
-      stAvg: 77.2,
-      putScore: 86.0,
-      cgpa: 8.42,
-      riskStatus: 'safe',
-      riskReason: 'Consistent recovery in Units 4 & 5',
-      weakestUnit: 'Unit 3: Consensus',
-      assignedMentor: 'Prof. Sarah Jenkins',
-      suggestedMentor: 'Dr. V. Nambiar',
-      velocityTrend: 'up',
-    },
-    {
-      id: 'std_4022',
-      name: 'Rohan Mehra',
-      rollNo: '21CS019',
-      attendance: 64.2,
-      stAvg: 48.0,
-      putScore: 52.0,
-      cgpa: 5.84,
-      riskStatus: 'critical',
-      riskReason: 'Attendance < 65% + ST2 drop > 25%',
-      weakestUnit: 'Unit 2: Kernel Concurrency',
-      assignedMentor: 'Prof. Elena Rostova',
-      suggestedMentor: 'Prof. Sarah Jenkins',
-      velocityTrend: 'down',
-    },
-    {
-      id: 'std_4035',
-      name: 'Meera Iyer',
-      rollNo: '21CS041',
-      attendance: 71.0,
-      stAvg: 58.5,
-      putScore: 61.0,
-      cgpa: 6.42,
-      riskStatus: 'critical',
-      riskReason: 'Sudden -18pt delta on Unit 3 exam',
-      weakestUnit: 'Unit 3: Consensus',
-      assignedMentor: 'Prof. Elena Rostova',
-      suggestedMentor: 'Dr. V. Nambiar',
-      velocityTrend: 'down',
-    },
-    {
-      id: 'std_4011',
-      name: 'Tanvi Deshmukh',
-      rollNo: '21CS012',
-      attendance: 78.5,
-      stAvg: 67.0,
-      putScore: 69.0,
-      cgpa: 7.15,
-      riskStatus: 'warning',
-      riskReason: 'Delayed 2 consecutive assignments',
-      weakestUnit: 'Unit 4: LSM-Trees',
-      assignedMentor: 'Prof. Sarah Jenkins',
-      suggestedMentor: 'Dr. Kevin Zhao',
-      velocityTrend: 'flat',
-    },
-    {
-      id: 'std_4058',
-      name: 'Devansh Kulkarni',
-      rollNo: '21CS067',
-      attendance: 94.0,
-      stAvg: 88.0,
-      putScore: 92.5,
-      cgpa: 9.18,
-      riskStatus: 'safe',
-      riskReason: 'High retention and zero delays',
-      weakestUnit: 'None (Uniform > 85%)',
-      assignedMentor: 'Dr. V. Nambiar',
-      suggestedMentor: 'Dr. V. Nambiar',
-      velocityTrend: 'up',
-    },
-    {
-      id: 'std_4080',
-      name: 'Zoya Siddiqui',
-      rollNo: '21CS099',
-      attendance: 69.8,
-      stAvg: 62.0,
-      putScore: 64.0,
-      cgpa: 6.80,
-      riskStatus: 'warning',
-      riskReason: 'Marginal attendance threshold',
-      weakestUnit: 'Unit 1: Memory Pointers',
-      assignedMentor: 'Dr. Kevin Zhao',
-      suggestedMentor: 'Prof. Sarah Jenkins',
-      velocityTrend: 'flat',
-    },
-  ],
+// Pillar 1 — Attendance Tracking
+export const studentAttendance = {
+  rolling14: 79, // Last 14 days mein 79% attendance
+  rolling30: 86,
+  threshold: 75, // Minimum required
+  last14Days: ['P', 'P', 'A', 'P', 'P', 'P', 'A', 'P', 'P', 'P', 'P', 'A', 'P', 'P'],
 };
+
+// Pillar 2 — Subject Marks & Learning Velocity (Graphs ke liye)
+export const studentSubjects = [
+  {
+    code: 'KCS501',
+    name: 'Database Management Systems',
+    st1: { obtained: 22, max: 30 },
+    st2: { obtained: 25, max: 30 },
+    put: { obtained: 71, max: 100 },
+    classAvgPct: 68,
+    unitScores: [68, 74, 80, 61, null], // null ka matlab abhi test nahi hua
+  },
+  {
+    code: 'KCS502',
+    name: 'Compiler Design',
+    st1: { obtained: 14, max: 30 },
+    st2: { obtained: 11, max: 30 },
+    put: null, 
+    classAvgPct: 58,
+    unitScores: [52, 44, 38, null, null],
+  },
+];
+
+// Pillar 3 — Concept Retention (Konse topics mein student struggle kar raha hai)
+export const conceptRetention = [
+  { subjectCode: 'KCS502', topic: 'LR(1) parsing', unit: 3, difficulty: 'hard', accuracy: 31, repeatedMistakes: 3 },
+  { subjectCode: 'KCS501', topic: 'Normalization (BCNF)', unit: 3, difficulty: 'medium', accuracy: 82, repeatedMistakes: 0 },
+];
+
+// Pillar 4 — Assignments (Kaunse pending hain, kaunse late hain)
+export const assignmentSummary = {
+  total: 6,
+  onTime: 2,
+  late: 2,
+  overdue: 1,
+  pending: 1,
+};
+
+
+/* ========================================================= */
+/* 2. TEACHER / FACULTY VIEW DATA                            */
+/* ========================================================= */
+
+// Teacher ki profile details
+export const currentTeacher = {
+  id: 'FAC-118',
+  name: 'Prof. Rajesh K. Verma',
+  department: 'Computer Science & Engineering',
+  subject: 'KCS502 · Compiler Design',
+  batch: 'B.Tech CSE · Sem 5 · Section C',
+};
+
+// Class ki overall performance summary
+export const cohortSummary = {
+  enrolled: 62,
+  atRisk: 5,        // Kitne bachhe fail hone ke risk par hain
+  review: 9,
+  anomalies: 2,     // ML detected anomaly (sudden drop in marks)
+  avgAttendance: 81,
+  avgVelocityPts: 3.1, 
+};
+
+// Pillar 5 — Risk Triage (Class ke saare students aur unka ML risk level)
+// Risk status: 'safe' | 'review' | 'at-risk'
+export const cohort = [
+  { id: 'STU-2244', name: 'Rohan Mehta', roll: '2201640100195', attendance: 61, st1Pct: 72, st2Pct: 41, delayedSubmissions: 2, risk: 'at-risk', anomaly: true, flagReason: 'Score drop of 31 pts with attendance falling to 61%' },
+  { id: 'STU-2257', name: 'Meera Joshi', roll: '2201640100229', attendance: 83, st1Pct: 49, st2Pct: 63, delayedSubmissions: 0, risk: 'safe', anomaly: false, flagReason: 'Recovered +14 pts after ST1' },
+];
+
+// Pillar 6 — Mentor Reallocation (ML suggest kar raha hai ki kis student ko kaunsa naya mentor dena chahiye)
+export const mentorAllocations = [
+  {
+    studentId: 'STU-2241', student: 'Aarav Sharma',
+    subjectCode: 'KCS502', unit: 3, unitTitle: 'Syntax-directed translation', unitScorePct: 38,
+    current: { name: 'Dr. Neha Gupta', tes: 0.52 },
+    suggested: { name: 'Prof. Rajesh K. Verma', type: 'FACULTY', tes: 0.81 }, // Better Teacher Efficacy Score (TES)
+  },
+];
+
+export const teacherEfficacy = [
+  { faculty: 'Prof. Rajesh K. Verma', subjectCode: 'KCS502', unit: 3, tes: 0.81 },
+];
+
+
+/* ========================================================= */
+/* 3. HELPER FUNCTIONS                                       */
+/* ========================================================= */
+
+// Percentage calculate karne ke liye chota sa function
+export const pct = (score) => (score ? Math.round((score.obtained / score.max) * 100) : null);
+
+// Do units ke marks ka difference nikalta hai (e.g., Unit 1 se Unit 2 me kitne marks badhe/ghate)
+export const unitDeltas = (units) =>
+  units.slice(1).map((v, i) => (v == null || units[i] == null ? null : v - units[i]));
