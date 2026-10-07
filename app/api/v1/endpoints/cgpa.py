@@ -1,1 +1,0 @@
-"""CGPA forecasting endpoint."""

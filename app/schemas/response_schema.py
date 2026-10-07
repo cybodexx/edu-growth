@@ -1,1 +1,0 @@
-"""Standard API response schemas."""
