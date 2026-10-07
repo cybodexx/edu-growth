@@ -2,5 +2,3 @@
 .csv
 __pycache__/
 *.py[cod]
-artifacts/*.pkl
-artifacts/*.joblib
