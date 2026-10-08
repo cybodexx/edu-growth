@@ -176,8 +176,9 @@ The repository currently contains the project scaffold; the pipeline, API, and U
 1. Export the linked Google Sheet as CSV and place it in `data/raw/` (for example, `messy_edu_growth_99_columns.csv`).
 2. Create and activate a Python 3.10+ virtual environment.
 3. Install the dependencies selected for the implementation. `requirements.txt` is currently empty, so dependency installation instructions will be added with the working pipeline.
-4. Start with `notebooks/01_eda_data_cleaning.ipynb` and verify column names, target encoding, value ranges, duplicates, missingness, and whether one row represents one student.
-5. Keep the exported dataset and any `.env` secrets local; do not commit personal student data.
+4. Run the notebooks in order: EDA and cleaning writes `data/processed/edu_growth_cleaned.csv`; PCA reads that file and writes `data/pca_transformed/edu_growth_pca.csv`; the CGPA, mentor, and risk notebooks read the cleaned file.
+5. Model outputs are written under `artifacts/` (`student_grade_predictor.pkl`, `mentor_assignments.csv`, `risk_output.csv`, and `risk_models.pkl`).
+6. The notebooks find the project root when launched from the repository root or `notebooks/`; keep the exported dataset and any `.env` secrets local, and do not commit personal student data.
 
 ---
 
@@ -186,14 +187,17 @@ The repository currently contains the project scaffold; the pipeline, API, and U
 ```text
 data/
 ├── raw/
+│   └── messy_edu_growth_99_columns.csv
 ├── processed/
+│   └── edu_growth_cleaned.csv
 └── pca_transformed/
+    └── edu_growth_pca.csv
 notebooks/
 ├── 01_eda_data_cleaning.ipynb
 ├── 02_pca_dimensionality_reduction.ipynb
 ├── 03_cgpa_prediction_model.ipynb
 ├── 04_mentor_clustering_model.ipynb
-└── 05_risk_isolation_forest.ipynb
+└── 05_risk_prediction.ipynb
 ml_pipeline/
 ├── __init__.py
 ├── config.py
@@ -202,6 +206,10 @@ ml_pipeline/
 ├── trainer.py
 └── utils.py
 artifacts/
+├── student_grade_predictor.pkl
+├── mentor_assignments.csv
+├── risk_output.csv
+└── risk_models.pkl
 app/
 ├── __init__.py
 ├── main.py
@@ -240,7 +248,7 @@ requirements.txt
 README.md
 ```
 
-The data and artifact directories start empty. Keep local datasets, trained model files, and `.env` secrets out of version control; `.env.example` is the safe configuration template. The notebook filenames `03_cgpa_prediction_model.ipynb` and `05_risk_isolation_forest.ipynb` are inherited from the initial scaffold: the target is `final_semester_grade`, and anomaly scores are not risk labels.
+Keep local datasets, trained model files, and `.env` secrets out of version control; `.env.example` is the safe configuration template. The notebook target is `final_semester_grade`, and anomaly scores are not risk labels.
 
 ---
 
