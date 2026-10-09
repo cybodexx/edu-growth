@@ -1,519 +1,912 @@
-import os
-import pickle
+"""
+Mentor assignment engine.
+
+One class, :class:`MentorAssigner`, owns the whole mentor flow:
+
+    raw student row (CSV *or* Neon)
+        -> feature engineering (subject % / unit % / lab %)
+        -> KMeans risk clustering
+        -> teacher efficacy ranking (per subject, per unit, per lab)
+        -> peer-mentor lookup
+        -> unit-wise, subject-wise mentor assignment
+        -> detailed analysis dict + flat assignment rows
+
+Public entry points
+-------------------
+* ``MentorAssigner().fit(df)``                 train on the whole cohort
+* ``assigner.analyze_student("210029...")``    full analysis for one roll-no/name
+* ``assigner.assign_all(df)``                  flat mentor-assignment table
+* ``assigner.ensure_assignments(df)``         create only the still-missing rows
+* ``run_pipeline()``                           end-to-end CSV run (artifacts)
+"""
+from __future__ import annotations
+
 from pathlib import Path
-import pandas as pd
+
 import numpy as np
+import pandas as pd
 from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
 from sklearn.preprocessing import StandardScaler
+
 from .config import (
     SUBJECT_LIST,
     LAB_LIST,
+    UNITS,
+    SUBJECT_LABELS,
+    LAB_LABELS,
     FAIL_MARKS,
     GOOD_MARKS,
+    INTENSIVE_MARKS,
+    N_CLUSTERS,
+    RANDOM_STATE,
+    KMEANS_FEATURES,
+    RISK_ORDER,
+    PRIORITY_MAPPING,
     TEACHER_DATA,
+    HARDCODED_WEAK_TEACHER_UNITS,
+    HARDCODED_WEAK_PENALTY,
     DEFAULT_DATA_PATH,
     DEFAULT_ARTIFACTS_DIR,
-    MODEL_SAVE_PATH,
     ASSIGNMENTS_CSV_PATH,
-    TEACHER_RANKING_CSV_PATH
+    TEACHER_RANKING_CSV_PATH,
 )
+from . import db_backend
+
+
+def _round(value, digits=2):
+    try:
+        if pd.isna(value):
+            return None
+        return round(float(value), digits)
+    except (TypeError, ValueError):
+        return value
+
+
 class MentorAssigner:
+    """End-to-end mentor + teacher-efficacy analysis engine."""
+
     def __init__(self):
-        self.scaler=StandardScaler()
-        self.kmeans=KMeans(n_clusters=4,random_state=42,n_init=10)
-        self.group_mapping={}
-        self.priority_mapping = {"Need Help": 1, "Fell Down": 2, "Normal": 3, "Topper": 4}
-        self.teacher_ranking_df=pd.DataFrame()
-        self.ranked_dict={}
-        self.peer_dict={}
-        self.max_marks={}
-        self.section_teacher_map={}
-        self.is_fitted=False
+        self.scaler = StandardScaler()
+        self.kmeans = KMeans(n_clusters=N_CLUSTERS, random_state=RANDOM_STATE, n_init=10)
+        self.group_mapping: dict[int, str] = {}
+        self.cluster_profiles: dict[int, dict] = {}
+        self.priority_mapping = dict(PRIORITY_MAPPING)
+
+        self.teacher_ranking_df = pd.DataFrame()
+        self.ranked_dict: dict[tuple, list[tuple]] = {}
+        self.peer_dict: dict[tuple, list[dict]] = {}
+
+        self.max_marks: dict[str, float] = {}
+        self.section_teacher_map: dict[tuple, str] = {}
+        self.weak_overrides: dict[tuple, str] = {}  # (subject, unit_label) -> note
+
+        self.data: pd.DataFrame | None = None
+        self.is_fitted = False
+
         self._build_section_teacher_map()
+        self._load_weak_overrides()
+
+    # ------------------------------------------------------------------
+    # Setup helpers
+    # ------------------------------------------------------------------
     def _build_section_teacher_map(self):
-        self.section_teacher_map={}
-        for sub,teachers in TEACHER_DATA.items():
-            for t_name,sections in teachers.items():
-                for sec in sections:
-                    self.section_teacher_map[(sub,sec.strip().upper())]=t_name
-    def _get_current_teacher(self,subject,section):
+        self.section_teacher_map = {}
+        for subject, teachers in TEACHER_DATA.items():
+            for teacher, sections in teachers.items():
+                for section in sections:
+                    self.section_teacher_map[(subject, section.strip().upper())] = teacher
+
+    def _load_weak_overrides(self):
+        """Loads hardcoded (and, if available, DB-stored) weak teacher+unit rows.
+
+        Key: (subject, unit_label) -> note. ``unit_label`` is e.g. ``"unit 1"``
+        for theory or ``"lab overall"`` for a lab. Teachers listed here get a
+        score penalty so they are not recommended for that unit.
+        """
+        records = list(HARDCODED_WEAK_TEACHER_UNITS)
+        if db_backend.backend_enabled():
+            try:
+                records += db_backend.load_teacher_unit_weakness()
+            except Exception as exc:  # pragma: no cover - backend optional
+                print(f"[mentor] could not load weak-teacher overrides from DB: {exc}")
+
+        self.weak_overrides = {}
+        for row in records:
+            subject = str(row.get("subject", "")).strip().lower()
+            unit = str(row.get("unit_or_component", "")).strip().lower()
+            teacher = str(row.get("teacher_name", "")).strip()
+            note = str(row.get("note", "hardcoded weak teacher/unit"))
+            if subject and unit and teacher:
+                self.weak_overrides[(subject, unit, teacher)] = note
+
+        # index by (subject, unit) for quick lookup
+        self._weak_by_unit: dict[tuple, set] = {}
+        for (subject, unit, teacher) in self.weak_overrides:
+            self._weak_by_unit.setdefault((subject, unit), set()).add(teacher)
+
+    def _get_current_teacher(self, subject, section) -> str:
         return self.section_teacher_map.get((subject, str(section).strip().upper()), "Unknown")
-    def _calculate_max_marks(self,df):
-        st1_cols = [f"{s}_st1_marks" for s in SUBJECT_LIST if f"{s}_st1_marks" in df.columns]
-        st2_cols = [f"{s}_st2_marks" for s in SUBJECT_LIST if f"{s}_st2_marks" in df.columns]
-        put_cols = [f"{s}_put_marks" for s in SUBJECT_LIST if f"{s}_put_marks" in df.columns]
-        unit_cols=[]
-        for s in SUBJECT_LIST:
-            for u in range(1,6):
-                c = f"{s}_unit_{u}_marks"
-                if c in df.columns:
-                    unit_cols.append(c)
-        lab_exec_cols = [f"lab_{l}_execution_score" for l in LAB_LIST if f"lab_{l}_execution_score" in df.columns]
-        lab_viva_cols = [f"lab_{l}_viva_score" for l in LAB_LIST if f"lab_{l}_viva_score" in df.columns]
-        self.max_marks={
-            "max_st1": float(df[st1_cols].max().max()) if st1_cols else 100.0,
-            "max_st2": float(df[st2_cols].max().max()) if st2_cols else 100.0,
-            "max_put": float(df[put_cols].max().max()) if put_cols else 100.0,
-            "max_unit": float(df[unit_cols].max().max()) if unit_cols else 100.0,
-            "max_lab_exec": float(df[lab_exec_cols].max().max()) if lab_exec_cols else 100.0,
-            "max_lab_viva": float(df[lab_viva_cols].max().max()) if lab_viva_cols else 100.0,
+
+    def _is_weak_override(self, subject, unit_label, teacher) -> bool:
+        return teacher in self._weak_by_unit.get((subject, unit_label), set())
+
+    # ------------------------------------------------------------------
+    # Data loading
+    # ------------------------------------------------------------------
+    def load_data(self, data_path=None) -> pd.DataFrame:
+        """Loads the cohort from CSV (offline / fallback path)."""
+        path = Path(data_path or DEFAULT_DATA_PATH)
+        df = pd.read_csv(path)
+        self.data = df
+        return df
+
+    def load_from_backend(self) -> pd.DataFrame:
+        """Loads the cohort from the Neon backend."""
+        df = db_backend.fetch_students()
+        if df.empty:
+            raise RuntimeError("Neon backend returned no students. Import the dataset first.")
+        self.data = df
+        return df
+
+    def load(self, data_path=None, prefer_backend=True) -> pd.DataFrame:
+        """Loads from Neon when configured, otherwise falls back to CSV."""
+        if prefer_backend and db_backend.backend_enabled():
+            try:
+                return self.load_from_backend()
+            except Exception as exc:  # pragma: no cover - backend optional
+                print(f"[mentor] backend load failed ({exc}); falling back to CSV.")
+        return self.load_data(data_path)
+
+    # ------------------------------------------------------------------
+    # Feature engineering
+    # ------------------------------------------------------------------
+    def _calculate_max_marks(self, df):
+        def _max(cols):
+            cols = [c for c in cols if c in df.columns]
+            if not cols:
+                return 100.0
+            value = pd.to_numeric(df[cols].stack(), errors="coerce").max()
+            return float(value) if pd.notna(value) and value > 0 else 100.0
+
+        self.max_marks = {
+            "max_st1": _max([f"{s}_st1_marks" for s in SUBJECT_LIST]),
+            "max_st2": _max([f"{s}_st2_marks" for s in SUBJECT_LIST]),
+            "max_put": _max([f"{s}_put_marks" for s in SUBJECT_LIST]),
+            "max_unit": _max([f"{s}_unit_{u}_marks" for s in SUBJECT_LIST for u in UNITS]),
+            "max_lab_exec": _max([f"lab_{l}_execution_score" for l in LAB_LIST]),
+            "max_lab_viva": _max([f"lab_{l}_viva_score" for l in LAB_LIST]),
         }
-    def _preprocess_dataframe(self,df):
-        df=df.copy()
-        df["class_section"] = df["class_section"].astype(str).str.strip().str.upper()
+
+    def _num(self, df, col):
+        if col not in df.columns:
+            return pd.Series(0.0, index=df.index)
+        return pd.to_numeric(df[col], errors="coerce").fillna(0.0)
+
+    def prepare_features(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Adds all derived columns: component %, unit %, lab %, weakness counts."""
+        df = df.copy()
+        if "class_section" in df.columns:
+            df["class_section"] = df["class_section"].astype(str).str.strip().str.upper()
+
+        if not self.max_marks:
+            self._calculate_max_marks(df)
         m_st1 = self.max_marks.get("max_st1", 100.0)
         m_st2 = self.max_marks.get("max_st2", 100.0)
         m_put = self.max_marks.get("max_put", 100.0)
         m_unit = self.max_marks.get("max_unit", 100.0)
         m_lexec = self.max_marks.get("max_lab_exec", 100.0)
         m_lviva = self.max_marks.get("max_lab_viva", 100.0)
-        pct_cols=[]
+
+        derived: dict[str, pd.Series] = {}
+        subject_pct_cols = []
         for s in SUBJECT_LIST:
-            v_st1 = df[f"{s}_st1_marks"] / m_st1 * 100.0
-            v_st2 = df[f"{s}_st2_marks"] / m_st2 * 100.0
-            v_put = df[f"{s}_put_marks"] / m_put * 100.0
-            unit_sub_cols=[]
-            for u in range(1,6):
-                u_col = f"{s}_unit_{u}_marks"
-                pct_col = f"{s}_unit_{u}_pct"
-                df[pct_col]=(df[u_col]/m_unit*100.0).round(2)
-                df[f"{s}_unit_{u}_bad"] = (df[pct_col] < FAIL_MARKS).astype(int)
-                unit_sub_cols.append(pct_col)
-            v_unit=df[unit_sub_cols].mean(axis=1)
-            df[f"{s}_pct"] = ((v_st1 + v_st2 + v_put + v_unit) / 4.0).round(2)
-            pct_cols.append(f"{s}_pct")
-            df[f"{s}_bad"] = (df[f"{s}_pct"] < FAIL_MARKS).astype(int)
-            df[f"{s}_t"] = df["class_section"].apply(lambda sec: self._get_current_teacher(s, sec))
+            st1 = self._num(df, f"{s}_st1_marks") / m_st1 * 100.0
+            st2 = self._num(df, f"{s}_st2_marks") / m_st2 * 100.0
+            put = self._num(df, f"{s}_put_marks") / m_put * 100.0
+            derived[f"{s}_st1_pct"] = st1.round(2)
+            derived[f"{s}_st2_pct"] = st2.round(2)
+            derived[f"{s}_put_pct"] = put.round(2)
+
+            unit_pcts = []
+            for u in UNITS:
+                pct = (self._num(df, f"{s}_unit_{u}_marks") / m_unit * 100.0).round(2)
+                derived[f"{s}_unit_{u}_pct"] = pct
+                derived[f"{s}_unit_{u}_bad"] = (pct < FAIL_MARKS).astype(int)
+                unit_pcts.append(pct)
+            unit_mean = pd.concat(unit_pcts, axis=1).mean(axis=1)
+
+            subject_pct = ((st1 + st2 + put + unit_mean) / 4.0).round(2)
+            derived[f"{s}_pct"] = subject_pct
+            derived[f"{s}_bad"] = (subject_pct < FAIL_MARKS).astype(int)
+            subject_pct_cols.append(f"{s}_pct")
+            derived[f"{s}_teacher"] = df["class_section"].map(
+                lambda sec, sub=s: self._get_current_teacher(sub, sec)
+            )
+
         for l in LAB_LIST:
-            v_exec = df[f"lab_{l}_execution_score"] / m_lexec * 100.0
-            v_viva = df[f"lab_{l}_viva_score"] / m_lviva * 100.0
-            df[f"lab_{l}_pct"] = ((v_exec + v_viva) / 2.0).round(2)
-            df[f"lab_{l}_bad"] = (df[f"lab_{l}_pct"] < FAIL_MARKS).astype(int)
-            df[f"lab_{l}_t"] = df["class_section"].apply(lambda sec: self._get_current_teacher(l, sec))
+            exe = self._num(df, f"lab_{l}_execution_score") / m_lexec * 100.0
+            viva = self._num(df, f"lab_{l}_viva_score") / m_lviva * 100.0
+            lab_pct = ((exe + viva) / 2.0).round(2)
+            derived[f"lab_{l}_exe_pct"] = exe.round(2)
+            derived[f"lab_{l}_viva_pct"] = viva.round(2)
+            derived[f"lab_{l}_pct"] = lab_pct
+            derived[f"lab_{l}_bad"] = (lab_pct < FAIL_MARKS).astype(int)
+            derived[f"lab_{l}_teacher"] = df["class_section"].map(
+                lambda sec, lab=l: self._get_current_teacher(lab, sec)
+            )
+
+        # Attach all derived columns in one concat (avoids frame fragmentation).
+        df = pd.concat([df, pd.DataFrame(derived, index=df.index)], axis=1)
+
         df["bad_subjects"] = df[[f"{s}_bad" for s in SUBJECT_LIST]].sum(axis=1)
         df["bad_labs"] = df[[f"lab_{l}_bad" for l in LAB_LIST]].sum(axis=1)
         df["total_weakness"] = df["bad_subjects"] + df["bad_labs"]
-        df["avg_pct"] = df[pct_cols].mean(axis=1).round(2)
-        df["min_pct"] = df[pct_cols].min(axis=1).round(2)
-        st1_means = df[[f"{s}_st1_marks" for s in SUBJECT_LIST]].mean(axis=1) / m_st1 * 100.0
-        st2_means = df[[f"{s}_st2_marks" for s in SUBJECT_LIST]].mean(axis=1) / m_st2 * 100.0
-        df["progress_score"] = (st2_means - st1_means).round(2)
+        df["avg_pct"] = df[subject_pct_cols].mean(axis=1).round(2)
+        df["min_pct"] = df[subject_pct_cols].min(axis=1).round(2)
+
+        st1_mean = df[[f"{s}_st1_pct" for s in SUBJECT_LIST]].mean(axis=1)
+        st2_mean = df[[f"{s}_st2_pct" for s in SUBJECT_LIST]].mean(axis=1)
+        df["progress_score"] = (st2_mean - st1_mean).round(2)
         return df
-    def _train_clusters(self,df):
-        features = ["avg_pct", "min_pct", "bad_subjects", "bad_labs", "overall_attendance_pct", "previous_cgpa", "progress_score"]
-        scaled_x=self.scaler.fit_transform(df[features].fillna(0))
-        df["group_id"] = self.kmeans.fit_predict(scaled_x)
+
+    # ------------------------------------------------------------------
+    # Clustering
+    # ------------------------------------------------------------------
+    def _train_clusters(self, df):
+        features = KMEANS_FEATURES
+        scaled = self.scaler.fit_transform(df[features].fillna(0))
+        df = df.copy()
+        df["group_id"] = self.kmeans.fit_predict(scaled)
+
         stats = df.groupby("group_id")[features].mean()
         low_g = int(stats["avg_pct"].idxmin())
         high_g = int(stats["avg_pct"].idxmax())
-        mid_g=[int(i) for i in stats.index if i not in (low_g,high_g)]
-        if stats.loc[mid_g[0], "min_pct"] < stats.loc[mid_g[1], "min_pct"]:
-            fell_down,normal=mid_g[0],mid_g[1]
+        mid = [int(i) for i in stats.index if i not in (low_g, high_g)]
+        if stats.loc[mid[0], "min_pct"] < stats.loc[mid[1], "min_pct"]:
+            fell_down, normal = mid[0], mid[1]
         else:
-            fell_down,normal=mid_g[1],mid_g[0]
-        self.group_mapping = {low_g: "Need Help", fell_down: "Fell Down", normal: "Normal", high_g: "Topper"}
+            fell_down, normal = mid[1], mid[0]
+        self.group_mapping = {
+            low_g: "Need Help",
+            fell_down: "Fell Down",
+            normal: "Normal",
+            high_g: "Topper",
+        }
+
+        df["risk_level"] = df["group_id"].map(self.group_mapping)
+        df["priority_rank"] = df["risk_level"].map(self.priority_mapping)
+
+        # Profile each cluster for reports / frontend
+        self.cluster_profiles = {}
+        for gid, group in df.groupby("group_id"):
+            self.cluster_profiles[int(gid)] = {
+                "risk_level": self.group_mapping[int(gid)],
+                "size": int(len(group)),
+                "share_pct": round(len(group) / len(df) * 100.0, 1),
+                "avg_pct": _round(group["avg_pct"].mean(), 1),
+                "min_pct": _round(group["min_pct"].mean(), 1),
+                "bad_subjects": _round(group["bad_subjects"].mean(), 1),
+                "bad_labs": _round(group["bad_labs"].mean(), 1),
+                "attendance_pct": _round(group["overall_attendance_pct"].mean(), 1),
+                "previous_cgpa": _round(group["previous_cgpa"].mean(), 2),
+                "progress_score": _round(group["progress_score"].mean(), 1),
+            }
+        return df
+
+    def _predict_clusters(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Vectorized cluster prediction for an already feature-engineered frame."""
+        scaled = self.scaler.transform(df[KMEANS_FEATURES].fillna(0))
+        df = df.copy()
+        df["group_id"] = self.kmeans.predict(scaled)
         df["risk_level"] = df["group_id"].map(self.group_mapping)
         df["priority_rank"] = df["risk_level"].map(self.priority_mapping)
         return df
-    def _build_rankings_and_peers(self,df):
-        ranking_records=[]
+
+    def transform(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Feature engineering + cluster/risk labels in one public call."""
+        if not self.is_fitted:
+            raise RuntimeError("Model is not fitted yet. Call fit() first.")
+        return self._predict_clusters(self.prepare_features(df))
+
+    def kmeans_diagnostics(self, df=None, k_range=range(2, 11), sample_size=15000) -> pd.DataFrame:
+        """Inertia + silhouette per k, for the elbow chart in the notebook.
+
+        A random sample is used by default because a full-cohort sweep is slow
+        and the curve shape is stable.
+        """
+        df = df if df is not None else self.data
+        if df is None:
+            raise RuntimeError("No data loaded. Call load()/fit() first or pass df.")
+        prepared = self.prepare_features(df)
+        x = prepared[KMEANS_FEATURES].fillna(0)
+        if sample_size and len(x) > sample_size:
+            x = x.sample(n=sample_size, random_state=RANDOM_STATE)
+        scaled = StandardScaler().fit_transform(x)
+
+        rows = []
+        for k in k_range:
+            model = KMeans(n_clusters=k, random_state=RANDOM_STATE, n_init=5)
+            labels = model.fit_predict(scaled)
+            rows.append({
+                "k": k,
+                "inertia": round(float(model.inertia_), 1),
+                "silhouette": round(float(silhouette_score(scaled, labels)), 4),
+            })
+        return pd.DataFrame(rows)
+
+    # ------------------------------------------------------------------
+    # Teacher efficacy ranking
+    # ------------------------------------------------------------------
+    def _teacher_score(self, scores: pd.Series) -> tuple[float, int, int, int]:
+        total = len(scores)
+        fail_cnt = int((scores < FAIL_MARKS).sum())
+        topper_cnt = int((scores >= GOOD_MARKS).sum())
+        score = 5.0 + 5.0 * (topper_cnt / total) - 5.0 * (fail_cnt / total)
+        return round(max(1.0, min(10.0, score)), 2), total, fail_cnt, topper_cnt
+
+    def _ranking_row(self, category, subject, unit_label, teacher, scores):
+        score, total, fail_cnt, topper_cnt = self._teacher_score(scores)
+        hardcoded = self._is_weak_override(subject, unit_label, teacher)
+        if hardcoded:
+            score = round(max(1.0, score - HARDCODED_WEAK_PENALTY), 2)
+        return {
+            "category": category,
+            "subject": subject,
+            "unit_or_component": unit_label,
+            "teacher_name": teacher,
+            "teacher_score": score,
+            "total_students": total,
+            "pass_rate_pct": round((1.0 - fail_cnt / total) * 100.0, 1),
+            "topper_rate_pct": round((topper_cnt / total) * 100.0, 1),
+            "sections_taught": ", ".join(TEACHER_DATA.get(subject, {}).get(teacher, [])) or "-",
+            "hardcoded_weak": bool(hardcoded),
+        }
+
+    def _build_teacher_ranking(self, df):
+        rows = []
+        # theory: each unit + subject overall
         for s in SUBJECT_LIST:
-            for u in range(1,6):
-                unit_pct_col = f"{s}_unit_{u}_pct"
-                for teacher in df[f"{s}_t"].unique():
-                    if teacher == "Unknown":
-                        continue
-                    teacher_students = df[df[f"{s}_t"] == teacher]
-                    if len(teacher_students)==0:
-                        continue
-                    scores=teacher_students[unit_pct_col]
-                    total=len(scores)
-                    fail_cnt=int((scores < FAIL_MARKS).sum())
-                    topper_cnt=int((scores >=GOOD_MARKS).sum())
-                    sc=5.0+5.0*(topper_cnt/total)-5.0*(fail_cnt/total)
-                    sc=round(max(1.0,min(10.0,sc)),2)
-                    ranking_records.append({
-                        "category": "theory",
-                        "subject": s,
-                        "unit_or_component": f"unit {u}",
-                        "teacher_name": teacher,
-                        "teacher_score": sc,
-                        "total_students": total,
-                        "pass_rate_pct": round((1.0 - fail_cnt / total) * 100.0, 1),
-                        "topper_rate_pct": round((topper_cnt / total) * 100.0, 1),
-                        "sections_taught": ", ".join(TEACHER_DATA.get(s, {}).get(teacher, []))
-                    })
-            for teacher in df[f"{s}_t"].unique():
+            tcol = f"{s}_teacher"
+            for teacher in df[tcol].dropna().unique():
                 if teacher == "Unknown":
                     continue
-                teacher_students = df[df[f"{s}_t"] == teacher]
-                if len(teacher_students)==0:
-                    continue
-                scores = teacher_students[f"{s}_pct"]
-                total=len(scores)
-                fail_cnt=int((scores < FAIL_MARKS).sum())
-                topper_cnt=int((scores >=GOOD_MARKS).sum())
-                sc=5.0+5.0*(topper_cnt/total)-5.0*(fail_cnt/total)
-                sc=round(max(1.0,min(10.0,sc)),2)
-                ranking_records.append({
-                    "category": "theory",
-                    "subject": s,
-                    "unit_or_component": "overall",
-                    "teacher_name": teacher,
-                    "teacher_score": sc,
-                    "total_students": total,
-                    "pass_rate_pct": round((1.0 - fail_cnt / total) * 100.0, 1),
-                    "topper_rate_pct": round((topper_cnt / total) * 100.0, 1),
-                    "sections_taught": ", ".join(TEACHER_DATA.get(s, {}).get(teacher, []))
-                })
+                subset = df[df[tcol] == teacher]
+                for u in UNITS:
+                    rows.append(self._ranking_row("theory", s, f"unit {u}", teacher, subset[f"{s}_unit_{u}_pct"]))
+                rows.append(self._ranking_row("theory", s, "overall", teacher, subset[f"{s}_pct"]))
+
+        # labs: overall
         for l in LAB_LIST:
-            for teacher in df[f"lab_{l}_t"].unique():
+            tcol = f"lab_{l}_teacher"
+            for teacher in df[tcol].dropna().unique():
                 if teacher == "Unknown":
                     continue
-                teacher_students = df[df[f"lab_{l}_t"] == teacher]
-                if len(teacher_students)==0:
-                    continue
-                scores = teacher_students[f"lab_{l}_pct"]
-                total=len(scores)
-                fail_cnt=int((scores < FAIL_MARKS).sum())
-                topper_cnt=int((scores >=GOOD_MARKS).sum())
-                sc=5.0+5.0*(topper_cnt/total)-5.0*(fail_cnt/total)
-                sc=round(max(1.0,min(10.0,sc)),2)
-                ranking_records.append({
-                    "category": "lab",
-                    "subject": l,
-                    "unit_or_component": "lab overall",
-                    "teacher_name": teacher,
-                    "teacher_score": sc,
-                    "total_students": total,
-                    "pass_rate_pct": round((1.0 - fail_cnt / total) * 100.0, 1),
-                    "topper_rate_pct": round((topper_cnt / total) * 100.0, 1),
-                    "sections_taught": ", ".join(TEACHER_DATA.get(l, {}).get(teacher, []))
-                })
-        self.teacher_ranking_df=pd.DataFrame(ranking_records)
-        if not self.teacher_ranking_df.empty:
-            self.teacher_ranking_df["rank"] = (
-                self.teacher_ranking_df.groupby(["category", "subject", "unit_or_component"])["teacher_score"]
+                subset = df[df[tcol] == teacher]
+                rows.append(self._ranking_row("lab", l, "lab overall", teacher, subset[f"lab_{l}_pct"]))
+
+        ranking = pd.DataFrame(rows)
+        if not ranking.empty:
+            ranking["rank"] = (
+                ranking.groupby(["category", "subject", "unit_or_component"])["teacher_score"]
                 .rank(ascending=False, method="min")
                 .astype(int)
             )
-            self.teacher_ranking_df=self.teacher_ranking_df.sort_values(
-                ["category", "subject", "unit_or_component", "rank"]
-            )
-        self.ranked_dict={}
-        for _,row in self.teacher_ranking_df.iterrows():
+            ranking = ranking.sort_values(["category", "subject", "unit_or_component", "rank"]).reset_index(drop=True)
+        self.teacher_ranking_df = ranking
+
+        self.ranked_dict = {}
+        for _, row in ranking.iterrows():
             key = (row["category"], row["subject"], row["unit_or_component"])
-            if key not in self.ranked_dict:
-                self.ranked_dict[key]=[]
-            self.ranked_dict[key].append((row["teacher_name"], float(row["teacher_score"])))
-        self.peer_dict={}
+            self.ranked_dict.setdefault(key, []).append((row["teacher_name"], float(row["teacher_score"])))
+        return ranking
+
+    # ------------------------------------------------------------------
+    # Peer mentors
+    # ------------------------------------------------------------------
+    def _build_peer_map(self, df):
+        self.peer_dict = {}
         for s in SUBJECT_LIST:
-            for sec in df["class_section"].unique():
-                candidates = df[(df["class_section"] == sec) & (df[f"{s}_bad"] == 0)]
-                top_peers = candidates.sort_values(f"{s}_pct", ascending=False).head(5)
-                self.peer_dict[("theory", s, sec)] = [
-                    {"roll_no": str(r["roll_no"]), "full_name": str(r["full_name"]), "score_pct": float(r[f"{s}_pct"])}
-                    for _,r in top_peers.iterrows()
+            for section in df["class_section"].unique():
+                candidates = df[(df["class_section"] == section) & (df[f"{s}_bad"] == 0)]
+                top = candidates.sort_values(f"{s}_pct", ascending=False).head(5)
+                self.peer_dict[("theory", s, section)] = [
+                    {"roll_no": str(r["roll_no"]), "name": str(r["full_name"]), "score_pct": _round(r[f"{s}_pct"], 1)}
+                    for _, r in top.iterrows()
                 ]
         for l in LAB_LIST:
-            for sec in df["class_section"].unique():
-                candidates = df[(df["class_section"] == sec) & (df[f"lab_{l}_bad"] == 0)]
-                top_peers = candidates.sort_values(f"lab_{l}_pct", ascending=False).head(5)
-                self.peer_dict[("lab", l, sec)] = [
-                    {"roll_no": str(r["roll_no"]), "full_name": str(r["full_name"]), "score_pct": float(r[f"lab_{l}_pct"])}
-                    for _,r in top_peers.iterrows()
+            for section in df["class_section"].unique():
+                candidates = df[(df["class_section"] == section) & (df[f"lab_{l}_bad"] == 0)]
+                top = candidates.sort_values(f"lab_{l}_pct", ascending=False).head(5)
+                self.peer_dict[("lab", l, section)] = [
+                    {"roll_no": str(r["roll_no"]), "name": str(r["full_name"]), "score_pct": _round(r[f"lab_{l}_pct"], 1)}
+                    for _, r in top.iterrows()
                 ]
-    def fit(self,df):
+        return self.peer_dict
+
+    # ------------------------------------------------------------------
+    # Fit
+    # ------------------------------------------------------------------
+    def fit(self, df: pd.DataFrame) -> "MentorAssigner":
+        self.data = df
         self._calculate_max_marks(df)
-        p_df=self._preprocess_dataframe(df)
-        c_df=self._train_clusters(p_df)
-        self._build_rankings_and_peers(c_df)
-        self.is_fitted=True
+        prepared = self.prepare_features(df)
+        clustered = self._train_clusters(prepared)
+        self._build_teacher_ranking(clustered)
+        self._build_peer_map(clustered)
+        self.is_fitted = True
         return self
-    def generate_assignments_csv(self,df,output_path=None):
-        if not self.is_fitted:
-            self.fit(df)
-        p_df=self._preprocess_dataframe(df)
-        features = ["avg_pct", "min_pct", "bad_subjects", "bad_labs", "overall_attendance_pct", "previous_cgpa", "progress_score"]
-        scaled_x=self.scaler.transform(p_df[features].fillna(0))
-        p_df["group_id"] = self.kmeans.predict(scaled_x)
-        p_df["risk_level"] = p_df["group_id"].map(self.group_mapping)
-        p_df["priority_rank"] = p_df["risk_level"].map(self.priority_mapping)
-        assignments=[]
-        peer_rr={}
-        for _,row in p_df.iterrows():
-            roll_no = str(row["roll_no"])
-            student_name = str(row["full_name"])
-            section = str(row["class_section"])
-            risk_level = str(row["risk_level"])
-            priority = int(row["priority_rank"])
-            prev_cgpa = float(row.get("previous_cgpa", 0.0))
-            att_pct = float(row.get("overall_attendance_pct", 0.0))
-            for s in SUBJECT_LIST:
-                subj_pct = float(row[f"{s}_pct"])
-                is_bad_subj = int(row[f"{s}_bad"]) == 1
-                weak_units=[]
-                lowest_unit_num=1
-                lowest_unit_score=999.0
-                for u in range(1,6):
-                    u_pct = float(row[f"{s}_unit_{u}_pct"])
-                    if u_pct < FAIL_MARKS:
-                        weak_units.append(f"Unit {u} ({u_pct:.1f}%)")
-                    if u_pct < lowest_unit_score:
-                        lowest_unit_score=u_pct
-                        lowest_unit_num=u
-                if is_bad_subj or len(weak_units) > 0:
-                    current_t = str(row[f"{s}_t"])
-                    primary_weak_unit = f"unit {lowest_unit_num}"
-                    assigned_teacher = "No Mentor Available"
-                    mentor_score=0.0
-                    ranked_teachers = self.ranked_dict.get(("theory", s, primary_weak_unit), [])
-                    for t_name,sc in ranked_teachers:
-                        if t_name !=current_t:
-                            assigned_teacher=t_name
-                            mentor_score=sc
-                            break
-                    if assigned_teacher == "No Mentor Available" and ranked_teachers:
-                        assigned_teacher=ranked_teachers[0][0]
-                        mentor_score=ranked_teachers[0][1]
-                    peer_key = ("theory", s, section)
-                    peers=self.peer_dict.get(peer_key,[])
-                    peer_roll, peer_name = "None", "None"
-                    if peers:
-                        c_idx=peer_rr.get(peer_key,0)
-                        ch=peers[c_idx % len(peers)]
-                        peer_rr[peer_key]=c_idx+1
-                        peer_roll, peer_name = ch["roll_no"], ch["full_name"]
-                    weak_units_str = ", ".join(weak_units) if weak_units else f"Unit {lowest_unit_num} ({lowest_unit_score:.1f}%)"
-                    reason = f"{s.upper()} theory weak in {weak_units_str} (Overall: {subj_pct:.1f}%)"
-                    assignments.append({
-                        "roll_no": roll_no,
-                        "student_name": student_name,
-                        "class_section": section,
-                        "risk_level": risk_level,
-                        "priority_rank": priority,
-                        "subject_type": "theory",
-                        "subject_name": s,
-                        "subject_score_pct": subj_pct,
-                        "weak_units": weak_units_str,
-                        "primary_weak_unit": f"Unit {lowest_unit_num}",
-                        "current_teacher": current_t,
-                        "assigned_mentor_name": assigned_teacher,
-                        "mentor_score": mentor_score,
-                        "peer_mentor_roll": peer_roll,
-                        "peer_mentor_name": peer_name,
-                        "assignment_reason": reason,
-                        "previous_cgpa": prev_cgpa,
-                        "attendance_pct": att_pct
-                    })
-            for l in LAB_LIST:
-                lab_pct = float(row[f"lab_{l}_pct"])
-                if int(row[f"lab_{l}_bad"]) == 1:
-                    current_t = str(row[f"lab_{l}_t"])
-                    assigned_teacher = "No Mentor Available"
-                    mentor_score=0.0
-                    ranked_teachers = self.ranked_dict.get(("lab", l, "lab overall"), [])
-                    for t_name,sc in ranked_teachers:
-                        if t_name !=current_t:
-                            assigned_teacher=t_name
-                            mentor_score=sc
-                            break
-                    if assigned_teacher == "No Mentor Available" and ranked_teachers:
-                        assigned_teacher=ranked_teachers[0][0]
-                        mentor_score=ranked_teachers[0][1]
-                    peer_key = ("lab", l, section)
-                    peers=self.peer_dict.get(peer_key,[])
-                    peer_roll, peer_name = "None", "None"
-                    if peers:
-                        c_idx=peer_rr.get(peer_key,0)
-                        ch=peers[c_idx % len(peers)]
-                        peer_rr[peer_key]=c_idx+1
-                        peer_roll, peer_name = ch["roll_no"], ch["full_name"]
-                    assignments.append({
-                        "roll_no": roll_no,
-                        "student_name": student_name,
-                        "class_section": section,
-                        "risk_level": risk_level,
-                        "priority_rank": priority,
-                        "subject_type": "lab",
-                        "subject_name": l,
-                        "subject_score_pct": lab_pct,
-                        "weak_units": "Practical Lab",
-                        "primary_weak_unit": "Lab",
-                        "current_teacher": current_t,
-                        "assigned_mentor_name": assigned_teacher,
-                        "mentor_score": mentor_score,
-                        "peer_mentor_roll": peer_roll,
-                        "peer_mentor_name": peer_name,
-                        "assignment_reason": f"{l.upper()} lab score {lab_pct:.1f}% below threshold",
-                        "previous_cgpa": prev_cgpa,
-                        "attendance_pct": att_pct
-                    })
-        assign_df=pd.DataFrame(assignments)
-        if not assign_df.empty:
-            assign_df = assign_df.sort_values(["priority_rank", "subject_score_pct"], ascending=[True, True])
-        if output_path:
-            os.makedirs(os.path.dirname(output_path),exist_ok=True)
-            assign_df.to_csv(output_path,index=False)
-            print(f"Exported {len(assign_df)} assignments to {output_path}")
-        return assign_df
-    def analyze_single_student(self,student_data):
-        if not self.is_fitted:
-            raise RuntimeError("Model is not fitted yet. Call load_model() first.")
-        single_df=pd.DataFrame([student_data])
-        processed=self._preprocess_dataframe(single_df)
-        row=processed.iloc[0]
-        features = ["avg_pct", "min_pct", "bad_subjects", "bad_labs", "overall_attendance_pct", "previous_cgpa", "progress_score"]
-        scaled_x=self.scaler.transform(processed[features].fillna(0))
-        cluster_id=int(self.kmeans.predict(scaled_x)[0])
-        risk_level = self.group_mapping.get(cluster_id, "Normal")
-        priority=self.priority_mapping.get(risk_level,3)
+
+    # ------------------------------------------------------------------
+    # Mentor selection
+    # ------------------------------------------------------------------
+    def pick_mentor(self, category, subject, unit_label, current_teacher):
+        """Best available expert for a subject/unit, avoiding the current teacher."""
+        candidates = self.ranked_dict.get((category, subject, unit_label), [])
+        fallback = None
+        for teacher, score in candidates:
+            if teacher == current_teacher:
+                continue
+            if self._is_weak_override(subject, unit_label, teacher):
+                fallback = fallback or (teacher, score)
+                continue
+            return {"name": teacher, "expertise_unit": unit_label, "rating": round(score, 2), "source": "teacher_ranking"}
+        if fallback:
+            return {"name": fallback[0], "expertise_unit": unit_label, "rating": round(fallback[1], 2), "source": "fallback_weak_teacher"}
+        if candidates:
+            teacher, score = candidates[0]
+            return {"name": teacher, "expertise_unit": unit_label, "rating": round(score, 2), "source": "same_teacher_only_option"}
+        return {"name": "No Mentor Available", "expertise_unit": unit_label, "rating": 0.0, "source": "none"}
+
+    def _pick_peer(self, category, subject, section, state):
+        key = (category, subject, section)
+        peers = self.peer_dict.get(key, [])
+        if not peers:
+            return {"roll_no": None, "name": None, "score_pct": None}
+        idx = state.get(key, 0) % len(peers)
+        state[key] = idx + 1
+        return peers[idx]
+
+    # ------------------------------------------------------------------
+    # Per-student analysis
+    # ------------------------------------------------------------------
+    def _analyze_processed_row(self, row, peer_state, predict_cluster=True):
         section = str(row["class_section"]).strip().upper()
-        weak_areas=[]
+
+        if predict_cluster:
+            x = pd.DataFrame([row[KMEANS_FEATURES].fillna(0)])
+            scaled = self.scaler.transform(x)
+            cluster_id = int(self.kmeans.predict(scaled)[0])
+            distances = self.kmeans.transform(scaled)[0]
+            order = np.argsort(distances)
+            own, second = float(distances[order[0]]), float(distances[order[1]])
+            confidence = round(float(np.clip(100.0 * (second - own) / (second + 1e-9), 0.0, 100.0)), 1)
+            cluster_distance = _round(own, 3)
+        else:
+            cluster_id = int(row["group_id"])
+            confidence = None
+            cluster_distance = None
+
+        risk_level = self.group_mapping.get(cluster_id, "Normal")
+        priority = self.priority_mapping.get(risk_level, 3)
+
+        subjects, labs, recommendations = [], [], []
+
+        # ---- subjects -------------------------------------------------
         for s in SUBJECT_LIST:
-            subj_pct = float(row[f"{s}_pct"])
+            current_teacher = str(row.get(f"{s}_teacher", "Unknown"))
+            units = []
+            weak_units = []
+            lowest_unit, lowest_score = None, 1e9
+            for u in UNITS:
+                pct = float(row[f"{s}_unit_{u}_pct"])
+                is_weak = pct < FAIL_MARKS
+                units.append({"unit": f"Unit {u}", "score_pct": _round(pct, 1), "status": "weak" if is_weak else "good"})
+                if is_weak:
+                    weak_units.append({"unit": f"Unit {u}", "score_pct": _round(pct, 1)})
+                if pct < lowest_score:
+                    lowest_score, lowest_unit = pct, u
+
+            score_pct = float(row[f"{s}_pct"])
             is_bad = int(row[f"{s}_bad"]) == 1
-            weak_units=[]
-            lowest_unit_num=1
-            lowest_unit_score=999.0
-            for u in range(1,6):
-                u_pct = float(row[f"{s}_unit_{u}_pct"])
-                if u_pct < FAIL_MARKS:
-                    weak_units.append({"unit": f"Unit {u}", "score_pct": round(u_pct, 1)})
-                if u_pct < lowest_unit_score:
-                    lowest_unit_score=u_pct
-                    lowest_unit_num=u
-            if is_bad or len(weak_units) > 0:
-                current_t=self._get_current_teacher(s,section)
-                primary_unit = f"unit {lowest_unit_num}"
-                ranked_teachers = self.ranked_dict.get(("theory", s, primary_unit), [])
-                assigned_teacher = "Faculty Pool"
-                mentor_score=0.0
-                for t_name,sc in ranked_teachers:
-                    if t_name !=current_t:
-                        assigned_teacher=t_name
-                        mentor_score=sc
-                        break
-                if assigned_teacher == "Faculty Pool" and ranked_teachers:
-                    assigned_teacher=ranked_teachers[0][0]
-                    mentor_score=ranked_teachers[0][1]
-                peers = self.peer_dict.get(("theory", s, section), [])
-                peer_info = peers[0] if peers else {"roll_no": "None", "full_name": "None", "score_pct": 0.0}
-                weak_units_desc = ", ".join([f"{item['unit']} ({item['score_pct']}%)" for item in weak_units]) if weak_units else f"Unit {lowest_unit_num} ({lowest_unit_score:.1f}%)"
-                weak_areas.append({
+            mentor_needed = bool(is_bad or weak_units)
+
+            mentor, peer = None, None
+            if mentor_needed:
+                unit_label = f"unit {lowest_unit}"
+                mentor = self.pick_mentor("theory", s, unit_label, current_teacher)
+                peer = self._pick_peer("theory", s, section, peer_state)
+
+            if not mentor_needed:
+                action = "No intervention needed"
+            elif lowest_score < INTENSIVE_MARKS:
+                action = "Intensive tutoring"
+            else:
+                action = "Expert mentoring + unit revision"
+
+            subjects.append({
+                "subject": s,
+                "label": SUBJECT_LABELS.get(s, s),
+                "score_pct": _round(score_pct, 1),
+                "status": "weak" if is_bad else "good",
+                "current_teacher": current_teacher,
+                "attendance_pct": _round(row.get(f"{s}_attendance_pct"), 1),
+                "components": {
+                    "st1_pct": _round(row.get(f"{s}_st1_pct"), 1),
+                    "st2_pct": _round(row.get(f"{s}_st2_pct"), 1),
+                    "put_pct": _round(row.get(f"{s}_put_pct"), 1),
+                    "unit_avg_pct": _round(np.mean([u["score_pct"] for u in units]), 1),
+                    "assignment_score": _round(row.get(f"{s}_assignment_score"), 1),
+                    "assignment_delay_hours": _round(row.get(f"{s}_assignment_delay_hours"), 1),
+                    "quiz_score": _round(row.get(f"{s}_quiz_score"), 1),
+                },
+                "units": units,
+                "weak_units": weak_units,
+                "lowest_unit": f"Unit {lowest_unit}",
+                "mentor_needed": mentor_needed,
+                "mentor": mentor,
+                "peer_mentor": peer,
+                "suggested_action": action,
+                "reason": (
+                    f"{s.upper()} overall {score_pct:.1f}% - weak units: "
+                    + ", ".join(f"{w['unit']} ({w['score_pct']}%)" for w in weak_units)
+                    if weak_units else f"{s.upper()} overall {score_pct:.1f}% is below {FAIL_MARKS}%"
+                ) if mentor_needed else f"{s.upper()} is on track ({score_pct:.1f}%)",
+            })
+
+            if mentor_needed:
+                recommendations.append({
                     "type": "theory",
                     "subject": s,
-                    "subject_score_pct": round(subj_pct, 1),
-                    "weak_units": weak_units,
-                    "primary_weak_unit": f"Unit {lowest_unit_num}",
-                    "current_teacher": current_t,
-                    "assigned_mentor": {"name": assigned_teacher, "expertise_unit": f"Unit {lowest_unit_num}", "rating_score": mentor_score},
-                    "peer_mentor": {"roll_no": peer_info["roll_no"], "name": peer_info["full_name"], "score_pct": peer_info.get("score_pct", 0.0)},
-                    "reason": f"Weak in {weak_units_desc} with overall score {subj_pct:.1f}%"
+                    "priority": priority,
+                    "score_pct": _round(score_pct, 1),
+                    "focus": mentor["expertise_unit"],
+                    "mentor": mentor["name"],
+                    "mentor_rating": mentor["rating"],
+                    "peer_mentor": (peer or {}).get("name"),
+                    "action": action,
                 })
+
+        # ---- labs -----------------------------------------------------
         for l in LAB_LIST:
-            lab_pct = float(row[f"lab_{l}_pct"])
-            if int(row[f"lab_{l}_bad"]) == 1:
-                current_t=self._get_current_teacher(l,section)
-                ranked_teachers = self.ranked_dict.get(("lab", l, "lab overall"), [])
-                assigned_teacher = "Faculty Pool"
-                mentor_score=0.0
-                for t_name,sc in ranked_teachers:
-                    if t_name !=current_t:
-                        assigned_teacher=t_name
-                        mentor_score=sc
-                        break
-                if assigned_teacher == "Faculty Pool" and ranked_teachers:
-                    assigned_teacher=ranked_teachers[0][0]
-                    mentor_score=ranked_teachers[0][1]
-                peers = self.peer_dict.get(("lab", l, section), [])
-                peer_info = peers[0] if peers else {"roll_no": "None", "full_name": "None", "score_pct": 0.0}
-                weak_areas.append({
+            current_teacher = str(row.get(f"lab_{l}_teacher", "Unknown"))
+            exe = float(row[f"lab_{l}_exe_pct"])
+            viva = float(row[f"lab_{l}_viva_pct"])
+            score_pct = float(row[f"lab_{l}_pct"])
+            is_bad = int(row[f"lab_{l}_bad"]) == 1
+            parts = []
+            for part_name, part_score in (("Execution", exe), ("Viva", viva)):
+                parts.append({
+                    "part": part_name,
+                    "score_pct": _round(part_score, 1),
+                    "status": "weak" if part_score < FAIL_MARKS else "good",
+                })
+            weak_parts = [p for p in parts if p["status"] == "weak"]
+            mentor_needed = bool(is_bad)
+
+            mentor, peer = None, None
+            if mentor_needed:
+                mentor = self.pick_mentor("lab", l, "lab overall", current_teacher)
+                peer = self._pick_peer("lab", l, section, peer_state)
+
+            if not mentor_needed:
+                action = "No intervention needed"
+            elif score_pct < INTENSIVE_MARKS:
+                action = "Intensive lab practice"
+            else:
+                action = "Lab mentoring + pair practice"
+
+            labs.append({
+                "lab": l,
+                "label": LAB_LABELS.get(l, l),
+                "score_pct": _round(score_pct, 1),
+                "status": "weak" if is_bad else "good",
+                "current_teacher": current_teacher,
+                "attendance_pct": _round(row.get(f"lab_{l}_attendance_pct"), 1),
+                "parts": parts,
+                "weak_parts": [p["part"] for p in weak_parts],
+                "mentor_needed": mentor_needed,
+                "mentor": mentor,
+                "peer_mentor": peer,
+                "suggested_action": action,
+                "reason": (
+                    f"{l.upper()} lab {score_pct:.1f}% below {FAIL_MARKS}%"
+                    if mentor_needed else f"{l.upper()} lab is on track ({score_pct:.1f}%)"
+                ),
+            })
+
+            if mentor_needed:
+                recommendations.append({
                     "type": "lab",
                     "subject": l,
-                    "subject_score_pct": round(lab_pct, 1),
-                    "weak_units": [{"unit": "Lab Practical", "score_pct": round(lab_pct, 1)}],
-                    "primary_weak_unit": "Lab Practical",
-                    "current_teacher": current_t,
-                    "assigned_mentor": {"name": assigned_teacher, "expertise_unit": "Lab Practical", "rating_score": mentor_score},
-                    "peer_mentor": {"roll_no": peer_info["roll_no"], "name": peer_info["full_name"], "score_pct": peer_info.get("score_pct", 0.0)},
-                    "reason": f"Practical lab score {lab_pct:.1f}% is below {FAIL_MARKS}%"
+                    "priority": priority,
+                    "score_pct": _round(score_pct, 1),
+                    "focus": "Lab overall",
+                    "mentor": mentor["name"],
+                    "mentor_rating": mentor["rating"],
+                    "peer_mentor": (peer or {}).get("name"),
+                    "action": action,
                 })
-        needs_intervention = len(weak_areas) > 0 or risk_level in ("Need Help", "Fell Down")
+
+        needs_intervention = bool(recommendations) or risk_level in ("Need Help", "Fell Down")
+        recommendations.sort(key=lambda r: (r["priority"], r["score_pct"]))
+
         return {
-            "roll_no": str(student_data.get("roll_no", "UNKNOWN")),
-            "full_name": str(student_data.get("full_name", "Student")),
+            "roll_no": str(row.get("roll_no")),
+            "full_name": str(row.get("full_name")),
             "class_section": section,
             "risk_level": risk_level,
             "priority_rank": priority,
             "needs_intervention": needs_intervention,
+            "clustering": {
+                "cluster_id": cluster_id,
+                "risk_level": risk_level,
+                "distance_to_centroid": cluster_distance,
+                "assignment_confidence_pct": confidence,
+                "cluster_profile": self.cluster_profiles.get(cluster_id),
+            },
             "academic_metrics": {
-                "average_percentage": float(row["avg_pct"]),
-                "lowest_subject_percentage": float(row["min_pct"]),
-                "progress_trend_st1_to_st2": float(row["progress_score"]),
+                "average_percentage": _round(row["avg_pct"], 1),
+                "lowest_subject_percentage": _round(row["min_pct"], 1),
+                "progress_trend_st1_to_st2": _round(row["progress_score"], 1),
                 "weak_subjects_count": int(row["bad_subjects"]),
                 "weak_labs_count": int(row["bad_labs"]),
-                "total_weak_areas": int(row["total_weakness"])
+                "total_weak_areas": int(row["total_weakness"]),
+                "previous_cgpa": _round(row.get("previous_cgpa"), 2),
+                "overall_attendance_pct": _round(row.get("overall_attendance_pct"), 1),
             },
-            "weak_interventions": weak_areas,
+            "subjects": subjects,
+            "labs": labs,
+            "recommendations": recommendations,
             "recommendation_summary": (
-                f"Student flagged as '{risk_level}' (Priority {priority}). {len(weak_areas)} subject/unit intervention(s) required."
-                if needs_intervention else "Student is performing well across all subjects and labs."
-            )
+                f"'{risk_level}' (priority {priority}). {len(recommendations)} mentor intervention(s) required."
+                if needs_intervention
+                else "Student is performing well across all subjects and labs."
+            ),
         }
-    def save_model(self,path=None):
-        save_path=path or MODEL_SAVE_PATH
-        os.makedirs(os.path.dirname(save_path),exist_ok=True)
-        with open(save_path, "wb") as f:
-            pickle.dump({
-                "scaler": self.scaler,
-                "kmeans": self.kmeans,
-                "group_mapping": self.group_mapping,
-                "priority_mapping": self.priority_mapping,
-                "ranked_dict": self.ranked_dict,
-                "peer_dict": self.peer_dict,
-                "max_marks": self.max_marks,
-                "section_teacher_map": self.section_teacher_map,
-                "teacher_ranking_df": self.teacher_ranking_df
-            },f)
-        print(f"Model saved to {save_path}")
-    def load_model(self,path=None):
-        load_path=path or MODEL_SAVE_PATH
-        if not os.path.exists(load_path):
-            raise FileNotFoundError(f"Model file not found at {load_path}")
-        with open(load_path, "rb") as f:
-            data=pickle.load(f)
-            self.scaler = data["scaler"]
-            self.kmeans = data["kmeans"]
-            self.group_mapping = data["group_mapping"]
-            self.priority_mapping = data.get("priority_mapping", {"Need Help": 1, "Fell Down": 2, "Normal": 3, "Topper": 4})
-            self.ranked_dict = data["ranked_dict"]
-            self.peer_dict = data["peer_dict"]
-            self.max_marks = data["max_marks"]
-            self.section_teacher_map = data.get("section_teacher_map", {})
-            self.teacher_ranking_df = data.get("teacher_ranking_df", pd.DataFrame())
-            self.is_fitted=True
-        print(f"Model loaded successfully from {load_path}")
-def run_pipeline(data_path=DEFAULT_DATA_PATH,artifacts_dir=DEFAULT_ARTIFACTS_DIR):
+
+    def _resolve_raw_student(self, identifier):
+        ident = str(identifier).strip()
+        if db_backend.backend_enabled():
+            try:
+                student = db_backend.fetch_student(ident)
+                if student:
+                    return student
+            except Exception as exc:  # pragma: no cover - backend optional
+                print(f"[mentor] backend lookup failed ({exc}); using loaded data.")
+        if self.data is not None:
+            match = self.data[
+                (self.data["roll_no"].astype(str) == ident)
+                | (self.data["full_name"].astype(str).str.lower() == ident.lower())
+            ]
+            if not match.empty:
+                return match.iloc[0].to_dict()
+        raise LookupError(f"No student found for '{identifier}'.")
+
+    def format_report(self, analysis: dict) -> str:
+        """Human-readable text report (same style as the notebook output)."""
+        lines = [
+            f"{analysis['full_name']} | {analysis['roll_no']} | {analysis['class_section']}",
+            f"{analysis['risk_level']} | priority {analysis['priority_rank']}",
+            analysis["recommendation_summary"],
+        ]
+        for s in analysis["subjects"]:
+            weak = ", ".join(w["unit"] for w in s["weak_units"]) or "-"
+            mentor = (s["mentor"] or {}).get("name", "-")
+            lines.append(f"{s['subject'].upper()} {s['score_pct']} % | weak: {weak} | mentor: {mentor}")
+        for l in analysis["labs"]:
+            weak = ", ".join(l["weak_parts"]) or "-"
+            mentor = (l["mentor"] or {}).get("name", "-")
+            lines.append(f"{l['lab'].upper()} LAB {l['score_pct']} % | weak: {weak} | mentor: {mentor}")
+        return "\n".join(lines)
+
+    def analyze_student(self, identifier, persist=False) -> dict:
+        """Full unit-wise / subject-wise analysis for one roll-number OR name."""
+        if not self.is_fitted:
+            raise RuntimeError("Model is not fitted yet. Call fit() first.")
+        raw = self._resolve_raw_student(identifier)
+        prepared = self.prepare_features(pd.DataFrame([raw]))
+        analysis = self._analyze_processed_row(prepared.iloc[0], peer_state={}, predict_cluster=True)
+        analysis["report_text"] = self.format_report(analysis)
+        if persist and analysis["needs_intervention"]:
+            self._persist_records(self._assignment_records_from_analysis(analysis))
+        return analysis
+
+    # ------------------------------------------------------------------
+    # Flat assignment table
+    # ------------------------------------------------------------------
+    def _assignment_records_from_analysis(self, analysis):
+        records = []
+        base = {
+            "roll_no": analysis["roll_no"],
+            "student_name": analysis["full_name"],
+            "class_section": analysis["class_section"],
+            "risk_level": analysis["risk_level"],
+            "priority_rank": analysis["priority_rank"],
+            "previous_cgpa": analysis["academic_metrics"].get("previous_cgpa"),
+            "attendance_pct": analysis["academic_metrics"].get("overall_attendance_pct"),
+        }
+        for subject in analysis["subjects"]:
+            if not subject["mentor_needed"]:
+                continue
+            weak = ", ".join(f"{w['unit']} ({w['score_pct']}%)" for w in subject["weak_units"])
+            records.append({
+                **base,
+                "subject_type": "theory",
+                "subject_name": subject["subject"],
+                "subject_score_pct": subject["score_pct"],
+                "weak_units": weak or subject["lowest_unit"],
+                "primary_weak_unit": subject["lowest_unit"],
+                "current_teacher": subject["current_teacher"],
+                "assigned_mentor_name": (subject["mentor"] or {}).get("name", "No Mentor Available"),
+                "mentor_score": (subject["mentor"] or {}).get("rating", 0.0),
+                "peer_mentor_roll": (subject["peer_mentor"] or {}).get("roll_no"),
+                "peer_mentor_name": (subject["peer_mentor"] or {}).get("name"),
+                "assignment_reason": subject["reason"],
+            })
+        for lab in analysis["labs"]:
+            if not lab["mentor_needed"]:
+                continue
+            records.append({
+                **base,
+                "subject_type": "lab",
+                "subject_name": lab["lab"],
+                "subject_score_pct": lab["score_pct"],
+                "weak_units": ", ".join(lab["weak_parts"]) or "Lab overall",
+                "primary_weak_unit": "Lab overall",
+                "current_teacher": lab["current_teacher"],
+                "assigned_mentor_name": (lab["mentor"] or {}).get("name", "No Mentor Available"),
+                "mentor_score": (lab["mentor"] or {}).get("rating", 0.0),
+                "peer_mentor_roll": (lab["peer_mentor"] or {}).get("roll_no"),
+                "peer_mentor_name": (lab["peer_mentor"] or {}).get("name"),
+                "assignment_reason": lab["reason"],
+            })
+        return records
+
+    def assign_all(self, df=None, output_path=None, persist=False) -> pd.DataFrame:
+        """Builds the flat mentor-assignment table for the whole cohort."""
+        if not self.is_fitted:
+            df = df if df is not None else self.load()
+            self.fit(df)
+        prepared = self.prepare_features(df if df is not None else self.data)
+        prepared = self._predict_clusters(prepared)
+
+        peer_state = {}
+        records = []
+        for _, row in prepared.iterrows():
+            analysis = self._analyze_processed_row(row, peer_state, predict_cluster=False)
+            records.extend(self._assignment_records_from_analysis(analysis))
+
+        assign_df = pd.DataFrame(records)
+        if not assign_df.empty:
+            assign_df = assign_df.sort_values(
+                ["priority_rank", "subject_score_pct"], ascending=[True, True]
+            ).reset_index(drop=True)
+
+        if output_path:
+            output_path = Path(output_path)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            assign_df.to_csv(output_path, index=False)
+            print(f"Exported {len(assign_df)} assignments to {output_path}")
+
+        if persist:
+            self._persist_records(assign_df.to_dict("records"))
+        return assign_df
+
+    # backward-compatible alias
+    def generate_assignments_csv(self, df=None, output_path=None):
+        return self.assign_all(df=df, output_path=output_path)
+
+    def _persist_records(self, records):
+        if not records:
+            return
+        if db_backend.backend_enabled():
+            try:
+                n = db_backend.save_mentor_assignments(pd.DataFrame(records))
+                print(f"[mentor] persisted {n} assignment rows to Neon.")
+                return
+            except Exception as exc:  # pragma: no cover - backend optional
+                print(f"[mentor] could not persist to Neon ({exc}); writing CSV instead.")
+        df = pd.DataFrame(records)
+        ASSIGNMENTS_CSV_PATH.parent.mkdir(parents=True, exist_ok=True)
+        df.to_csv(ASSIGNMENTS_CSV_PATH, index=False)
+
+    def ensure_assignments(self, df=None, persist=True) -> pd.DataFrame:
+        """Creates assignments for students who need one but don't have one yet.
+
+        Matches the requirement: when a new/extra student appears and the DB
+        already holds data, only the missing, condition-satisfying assignments
+        are generated.
+        """
+        if not self.is_fitted:
+            df = df if df is not None else self.load()
+            self.fit(df)
+        prepared = self.prepare_features(df if df is not None else self.data)
+        prepared = self._predict_clusters(prepared)
+
+        existing = set()
+        if db_backend.backend_enabled():
+            try:
+                existing = db_backend.fetch_assignment_keys()
+            except Exception as exc:  # pragma: no cover - backend optional
+                print(f"[mentor] could not read existing assignments ({exc}).")
+
+        peer_state = {}
+        records = []
+        for _, row in prepared.iterrows():
+            analysis = self._analyze_processed_row(row, peer_state, predict_cluster=False)
+            for record in self._assignment_records_from_analysis(analysis):
+                key = (str(record["roll_no"]), str(record["subject_type"]), str(record["subject_name"]))
+                if key in existing:
+                    continue
+                records.append(record)
+
+        new_df = pd.DataFrame(records)
+        if persist and not new_df.empty:
+            self._persist_records(records)
+        print(f"[mentor] ensure_assignments: {len(new_df)} new assignment(s) created.")
+        return new_df
+
+    # ------------------------------------------------------------------
+    # Persistence: none. The model is cheap to rebuild (~5s), so instead of
+    # saving a .pkl file we simply call fit(df) whenever we need the engine.
+    # ------------------------------------------------------------------
+
+
+def build_assigner(data_path=None, prefer_backend=True) -> MentorAssigner:
+    """Loads the cohort (Neon -> CSV) and fits the engine.
+
+    No pickle/model file is used: fitting on the full dataset takes a few
+    seconds, so we just rebuild it on demand.
+    """
+    assigner = MentorAssigner()
+    assigner.load(data_path, prefer_backend=prefer_backend)
+    assigner.fit(assigner.data)
+    return assigner
+
+
+def get_student_mentor(identifier, data_path=None) -> dict:
+    """Convenience entry point for the future API.
+
+    ``get_student_mentor("210029027561")`` or ``get_student_mentor("Kavya Verma")``
+    returns the full analysis dict produced by :meth:`MentorAssigner.analyze_student`.
+    """
+    return build_assigner(data_path).analyze_student(identifier)
+
+
+def get_student_report(identifier, data_path=None) -> str:
+    """Same as :func:`get_student_mentor` but returns the printable text report."""
+    return build_assigner(data_path).analyze_student(identifier)["report_text"]
+
+
+def run_pipeline(data_path=DEFAULT_DATA_PATH, artifacts_dir=DEFAULT_ARTIFACTS_DIR, persist_db=False):
+    """End-to-end CSV run: fit, export ranking + assignments."""
+    artifacts_dir = Path(artifacts_dir)
     print("=" * 60)
     print("Starting Mentor Pipeline...")
-    print(f"Reading dataset: {data_path}")
-    df=pd.read_csv(data_path)
-    print(f"Dataset Loaded. Total Records: {len(df)}")
-    assigner=MentorAssigner()
+    assigner = MentorAssigner()
+    df = assigner.load_data(data_path)
+    print(f"Dataset loaded: {len(df)} students, {df.shape[1]} columns")
     assigner.fit(df)
-    os.makedirs(artifacts_dir,exist_ok=True)
-    teacher_csv = artifacts_dir / "teacher_ranking.csv"
-    assigner.teacher_ranking_df.to_csv(teacher_csv,index=False)
-    print(f"Exported teacher rankings to: {teacher_csv}")
-    mentor_csv = artifacts_dir / "mentor_assign.csv"
-    assigner.generate_assignments_csv(df,output_path=mentor_csv)
-    model_pkl = artifacts_dir / "mentor_models.pkl"
-    assigner.save_model(model_pkl)
-    sample_student=df.iloc[0].to_dict()
-    analysis=assigner.analyze_single_student(sample_student)
-    print("Verification single student test:", analysis["roll_no"], analysis["risk_level"])
+
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+    ranking_path = artifacts_dir / "teacher_ranking.csv"
+    assigner.teacher_ranking_df.to_csv(ranking_path, index=False)
+    print(f"Teacher ranking exported: {ranking_path} ({len(assigner.teacher_ranking_df)} rows)")
+
+    assigner.assign_all(df, output_path=artifacts_dir / "mentor_assign.csv", persist=persist_db)
+
+    if persist_db and db_backend.backend_enabled():
+        db_backend.ensure_schema()
+        db_backend.save_teacher_ranking(assigner.teacher_ranking_df)
+
+    sample = df.iloc[0]["roll_no"]
+    analysis = assigner.analyze_student(sample)
+    print(f"Sample analysis -> {analysis['roll_no']} | risk={analysis['risk_level']} "
+          f"| interventions={len(analysis['recommendations'])}")
     print("=" * 60)
     return assigner
+
+
 if __name__ == "__main__":
     run_pipeline()

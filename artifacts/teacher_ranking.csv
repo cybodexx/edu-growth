@@ -1,121 +1,121 @@
-category,subject,unit_or_component,teacher_name,teacher_score,total_students,pass_rate_pct,topper_rate_pct,sections_taught,rank
-lab,coa,lab overall,Prof. Verma,6.5,9792,88.0,42.1,"CSE-C, IT-B",1
-lab,coa,lab overall,Dr. Sharma,6.45,24602,88.1,41.0,"CSE-A, CSE-B, IT-A",2
-lab,coa,lab overall,Dr. Ananya,6.43,9861,88.1,40.5,"CS-AI, CS-DS",3
-lab,cyber,lab overall,Dr. Saxena,6.46,14685,88.0,41.1,"CSE-A, CSE-C",1
-lab,cyber,lab overall,Prof. Tiwari,6.45,14754,88.1,40.9,"CSE-B, IT-B, CS-AI",2
-lab,cyber,lab overall,Dr. Malhotra,6.42,14816,87.6,40.8,"IT-A, CS-DS",3
-lab,ds,lab overall,Dr. Kapoor,6.47,9833,87.9,41.5,"IT-B, CS-DS",1
-lab,ds,lab overall,Dr. Singhal,6.46,14728,87.6,41.6,"CSE-A, CSE-B",2
-lab,ds,lab overall,Prof. Mishra,6.44,19694,88.0,40.8,"CSE-C, IT-A, CS-AI",3
-lab,python,lab overall,Dr. Nair,6.47,19719,87.8,41.6,"CSE-B, CSE-C, IT-A",1
-lab,python,lab overall,Prof. Bansal,6.47,9810,88.2,41.3,"IT-B, CS-AI",1
-lab,python,lab overall,Prof. Joshi,6.46,14726,87.9,41.3,"CSE-A, CS-DS",3
-theory,coa,overall,Dr. Ananya,6.49,9861,92.6,37.2,"CS-AI, CS-DS",1
-theory,coa,overall,Dr. Sharma,6.46,24602,92.1,37.0,"CSE-A, CSE-B, IT-A",2
-theory,coa,overall,Prof. Verma,6.44,9792,92.1,36.7,"CSE-C, IT-B",3
-theory,coa,unit 1,Dr. Ananya,6.68,9861,89.7,43.9,"CS-AI, CS-DS",1
-theory,coa,unit 1,Dr. Sharma,6.64,24602,89.1,43.7,"CSE-A, CSE-B, IT-A",2
-theory,coa,unit 1,Prof. Verma,6.6,9792,89.0,43.1,"CSE-C, IT-B",3
-theory,coa,unit 2,Dr. Ananya,6.64,9861,89.1,43.8,"CS-AI, CS-DS",1
-theory,coa,unit 2,Prof. Verma,6.63,9792,89.1,43.6,"CSE-C, IT-B",2
-theory,coa,unit 2,Dr. Sharma,6.62,24602,88.9,43.6,"CSE-A, CSE-B, IT-A",3
-theory,coa,unit 3,Prof. Verma,6.65,9792,89.1,43.8,"CSE-C, IT-B",1
-theory,coa,unit 3,Dr. Ananya,6.64,9861,89.4,43.4,"CS-AI, CS-DS",2
-theory,coa,unit 3,Dr. Sharma,6.62,24602,89.0,43.4,"CSE-A, CSE-B, IT-A",3
-theory,coa,unit 4,Dr. Sharma,6.64,24602,89.1,43.6,"CSE-A, CSE-B, IT-A",1
-theory,coa,unit 4,Prof. Verma,6.64,9792,89.2,43.7,"CSE-C, IT-B",1
-theory,coa,unit 4,Dr. Ananya,6.62,9861,88.8,43.6,"CS-AI, CS-DS",3
-theory,coa,unit 5,Dr. Sharma,6.64,24602,89.2,43.6,"CSE-A, CSE-B, IT-A",1
-theory,coa,unit 5,Dr. Ananya,6.61,9861,88.9,43.2,"CS-AI, CS-DS",2
-theory,coa,unit 5,Prof. Verma,6.58,9792,88.7,42.9,"CSE-C, IT-B",3
-theory,cyber,overall,Dr. Malhotra,6.5,14816,92.2,37.8,"IT-A, CS-DS",1
-theory,cyber,overall,Prof. Tiwari,6.48,14754,91.8,37.9,"CSE-B, IT-B, CS-AI",2
-theory,cyber,overall,Dr. Saxena,6.46,14685,92.0,37.2,"CSE-A, CSE-C",3
-theory,cyber,unit 1,Dr. Malhotra,6.68,14816,89.3,44.2,"IT-A, CS-DS",1
-theory,cyber,unit 1,Prof. Tiwari,6.67,14754,89.3,44.2,"CSE-B, IT-B, CS-AI",2
-theory,cyber,unit 1,Dr. Saxena,6.62,14685,89.1,43.3,"CSE-A, CSE-C",3
-theory,cyber,unit 2,Dr. Saxena,6.65,14685,89.1,43.8,"CSE-A, CSE-C",1
-theory,cyber,unit 2,Prof. Tiwari,6.65,14754,89.0,44.0,"CSE-B, IT-B, CS-AI",1
-theory,cyber,unit 2,Dr. Malhotra,6.63,14816,88.8,43.9,"IT-A, CS-DS",3
-theory,cyber,unit 3,Prof. Tiwari,6.64,14754,89.3,43.6,"CSE-B, IT-B, CS-AI",1
-theory,cyber,unit 3,Dr. Malhotra,6.63,14816,89.0,43.6,"IT-A, CS-DS",2
-theory,cyber,unit 3,Dr. Saxena,6.62,14685,89.0,43.4,"CSE-A, CSE-C",3
-theory,cyber,unit 4,Dr. Malhotra,6.67,14816,89.1,44.2,"IT-A, CS-DS",1
-theory,cyber,unit 4,Prof. Tiwari,6.66,14754,89.2,43.9,"CSE-B, IT-B, CS-AI",2
-theory,cyber,unit 4,Dr. Saxena,6.61,14685,89.0,43.3,"CSE-A, CSE-C",3
-theory,cyber,unit 5,Dr. Malhotra,6.66,14816,89.2,43.9,"IT-A, CS-DS",1
-theory,cyber,unit 5,Prof. Tiwari,6.66,14754,89.3,43.8,"CSE-B, IT-B, CS-AI",1
-theory,cyber,unit 5,Dr. Saxena,6.64,14685,89.1,43.6,"CSE-A, CSE-C",3
-theory,ds,overall,Dr. Kapoor,6.49,9833,92.1,37.8,"IT-B, CS-DS",1
-theory,ds,overall,Prof. Mishra,6.48,19694,92.3,37.3,"CSE-C, IT-A, CS-AI",2
-theory,ds,overall,Dr. Singhal,6.45,14728,92.1,36.9,"CSE-A, CSE-B",3
-theory,ds,unit 1,Prof. Mishra,6.67,19694,89.1,44.2,"CSE-C, IT-A, CS-AI",1
-theory,ds,unit 1,Dr. Kapoor,6.66,9833,88.9,44.3,"IT-B, CS-DS",2
-theory,ds,unit 1,Dr. Singhal,6.61,14728,88.5,43.6,"CSE-A, CSE-B",3
-theory,ds,unit 2,Dr. Kapoor,6.65,9833,89.2,43.8,"IT-B, CS-DS",1
-theory,ds,unit 2,Prof. Mishra,6.65,19694,89.1,43.9,"CSE-C, IT-A, CS-AI",1
-theory,ds,unit 2,Dr. Singhal,6.64,14728,88.9,43.8,"CSE-A, CSE-B",3
-theory,ds,unit 3,Dr. Kapoor,6.67,9833,89.4,44.0,"IT-B, CS-DS",1
-theory,ds,unit 3,Prof. Mishra,6.66,19694,89.2,44.1,"CSE-C, IT-A, CS-AI",2
-theory,ds,unit 3,Dr. Singhal,6.62,14728,89.0,43.4,"CSE-A, CSE-B",3
-theory,ds,unit 4,Dr. Kapoor,6.65,9833,89.2,43.8,"IT-B, CS-DS",1
-theory,ds,unit 4,Dr. Singhal,6.65,14728,89.2,43.8,"CSE-A, CSE-B",1
-theory,ds,unit 4,Prof. Mishra,6.64,19694,89.2,43.6,"CSE-C, IT-A, CS-AI",3
-theory,ds,unit 5,Prof. Mishra,6.68,19694,89.4,44.1,"CSE-C, IT-A, CS-AI",1
-theory,ds,unit 5,Dr. Kapoor,6.67,9833,89.3,44.0,"IT-B, CS-DS",2
-theory,ds,unit 5,Dr. Singhal,6.62,14728,88.8,43.5,"CSE-A, CSE-B",3
-theory,dstl,overall,Prof. Khan,6.5,14793,92.3,37.7,"IT-A, CS-AI",1
-theory,dstl,overall,Dr. Iyer,6.46,14787,92.1,37.1,"CSE-B, CSE-C, CS-DS",2
-theory,dstl,overall,Prof. Gupta,6.45,14675,91.7,37.3,"CSE-A, IT-B",3
-theory,dstl,unit 1,Prof. Khan,6.65,14793,88.9,44.0,"IT-A, CS-AI",1
-theory,dstl,unit 1,Prof. Gupta,6.62,14675,88.7,43.7,"CSE-A, IT-B",2
-theory,dstl,unit 1,Dr. Iyer,6.6,14787,88.6,43.5,"CSE-B, CSE-C, CS-DS",3
-theory,dstl,unit 2,Prof. Khan,6.71,14793,89.7,44.4,"IT-A, CS-AI",1
-theory,dstl,unit 2,Prof. Gupta,6.6,14675,88.7,43.4,"CSE-A, IT-B",2
-theory,dstl,unit 2,Dr. Iyer,6.59,14787,88.8,43.1,"CSE-B, CSE-C, CS-DS",3
-theory,dstl,unit 3,Prof. Gupta,6.63,14675,88.7,43.8,"CSE-A, IT-B",1
-theory,dstl,unit 3,Prof. Khan,6.62,14793,89.0,43.4,"IT-A, CS-AI",2
-theory,dstl,unit 3,Dr. Iyer,6.6,14787,89.1,42.9,"CSE-B, CSE-C, CS-DS",3
-theory,dstl,unit 4,Prof. Khan,6.71,14793,89.8,44.5,"IT-A, CS-AI",1
-theory,dstl,unit 4,Dr. Iyer,6.61,14787,89.0,43.1,"CSE-B, CSE-C, CS-DS",2
-theory,dstl,unit 4,Prof. Gupta,6.61,14675,88.8,43.4,"CSE-A, IT-B",2
-theory,dstl,unit 5,Prof. Khan,6.67,14793,89.4,44.1,"IT-A, CS-AI",1
-theory,dstl,unit 5,Dr. Iyer,6.64,14787,89.3,43.5,"CSE-B, CSE-C, CS-DS",2
-theory,dstl,unit 5,Prof. Gupta,6.63,14675,88.9,43.7,"CSE-A, IT-B",3
-theory,maths4,overall,Dr. Mehta,6.47,14816,92.2,37.2,"IT-A, CS-DS",1
-theory,maths4,overall,Dr. Rajesh,6.47,19604,92.2,37.2,"CSE-A, CSE-C, CS-AI",1
-theory,maths4,overall,Prof. Sneha,6.46,9835,92.0,37.2,"CSE-B, IT-B",3
-theory,maths4,unit 1,Prof. Sneha,6.7,9835,89.6,44.4,"CSE-B, IT-B",1
-theory,maths4,unit 1,Dr. Mehta,6.62,14816,88.8,43.6,"IT-A, CS-DS",2
-theory,maths4,unit 1,Dr. Rajesh,6.62,19604,89.1,43.4,"CSE-A, CSE-C, CS-AI",2
-theory,maths4,unit 2,Prof. Sneha,6.62,9835,88.8,43.5,"CSE-B, IT-B",1
-theory,maths4,unit 2,Dr. Mehta,6.61,14816,89.1,43.1,"IT-A, CS-DS",2
-theory,maths4,unit 2,Dr. Rajesh,6.6,19604,88.8,43.2,"CSE-A, CSE-C, CS-AI",3
-theory,maths4,unit 3,Prof. Sneha,6.68,9835,89.3,44.2,"CSE-B, IT-B",1
-theory,maths4,unit 3,Dr. Mehta,6.64,14816,89.4,43.5,"IT-A, CS-DS",2
-theory,maths4,unit 3,Dr. Rajesh,6.63,19604,88.9,43.6,"CSE-A, CSE-C, CS-AI",3
-theory,maths4,unit 4,Dr. Rajesh,6.64,19604,89.0,43.8,"CSE-A, CSE-C, CS-AI",1
-theory,maths4,unit 4,Dr. Mehta,6.62,14816,89.0,43.5,"IT-A, CS-DS",2
-theory,maths4,unit 4,Prof. Sneha,6.58,9835,88.8,42.9,"CSE-B, IT-B",3
-theory,maths4,unit 5,Dr. Mehta,6.68,14816,89.2,44.3,"IT-A, CS-DS",1
-theory,maths4,unit 5,Prof. Sneha,6.65,9835,89.0,44.0,"CSE-B, IT-B",2
-theory,maths4,unit 5,Dr. Rajesh,6.61,19604,88.9,43.3,"CSE-A, CSE-C, CS-AI",3
-theory,python,overall,Dr. Nair,6.5,19719,92.0,37.9,"CSE-B, CSE-C, IT-A",1
-theory,python,overall,Prof. Bansal,6.48,9810,92.1,37.5,"IT-B, CS-AI",2
-theory,python,overall,Prof. Joshi,6.44,14726,91.9,36.8,"CSE-A, CS-DS",3
-theory,python,unit 1,Prof. Bansal,6.66,9810,89.2,44.0,"IT-B, CS-AI",1
-theory,python,unit 1,Dr. Nair,6.65,19719,89.2,43.9,"CSE-B, CSE-C, IT-A",2
-theory,python,unit 1,Prof. Joshi,6.64,14726,89.0,43.8,"CSE-A, CS-DS",3
-theory,python,unit 2,Prof. Bansal,6.66,9810,89.2,44.0,"IT-B, CS-AI",1
-theory,python,unit 2,Prof. Joshi,6.64,14726,89.2,43.6,"CSE-A, CS-DS",2
-theory,python,unit 2,Dr. Nair,6.64,19719,89.1,43.8,"CSE-B, CSE-C, IT-A",2
-theory,python,unit 3,Dr. Nair,6.65,19719,89.1,43.9,"CSE-B, CSE-C, IT-A",1
-theory,python,unit 3,Prof. Bansal,6.64,9810,88.5,44.3,"IT-B, CS-AI",2
-theory,python,unit 3,Prof. Joshi,6.62,14726,89.0,43.4,"CSE-A, CS-DS",3
-theory,python,unit 4,Dr. Nair,6.63,19719,88.8,43.7,"CSE-B, CSE-C, IT-A",1
-theory,python,unit 4,Prof. Bansal,6.63,9810,88.9,43.7,"IT-B, CS-AI",1
-theory,python,unit 4,Prof. Joshi,6.62,14726,88.9,43.5,"CSE-A, CS-DS",3
-theory,python,unit 5,Prof. Bansal,6.7,9810,89.3,44.6,"IT-B, CS-AI",1
-theory,python,unit 5,Dr. Nair,6.65,19719,89.0,44.0,"CSE-B, CSE-C, IT-A",2
-theory,python,unit 5,Prof. Joshi,6.62,14726,88.8,43.6,"CSE-A, CS-DS",3
+category,subject,unit_or_component,teacher_name,teacher_score,total_students,pass_rate_pct,topper_rate_pct,sections_taught,hardcoded_weak,rank
+lab,coa,lab overall,Prof. Verma,6.5,9792,88.0,42.1,"CSE-C, IT-B",False,1
+lab,coa,lab overall,Dr. Sharma,6.45,24602,88.1,41.0,"CSE-A, CSE-B, IT-A",False,2
+lab,coa,lab overall,Dr. Ananya,6.43,9861,88.1,40.5,"CS-AI, CS-DS",False,3
+lab,cyber,lab overall,Dr. Saxena,6.46,14685,88.0,41.1,"CSE-A, CSE-C",False,1
+lab,cyber,lab overall,Prof. Tiwari,6.45,14754,88.1,40.9,"CSE-B, IT-B, CS-AI",False,2
+lab,cyber,lab overall,Dr. Malhotra,6.42,14816,87.6,40.8,"IT-A, CS-DS",False,3
+lab,ds,lab overall,Dr. Kapoor,6.47,9833,87.9,41.5,"IT-B, CS-DS",False,1
+lab,ds,lab overall,Dr. Singhal,6.46,14728,87.6,41.6,"CSE-A, CSE-B",False,2
+lab,ds,lab overall,Prof. Mishra,6.44,19694,88.0,40.8,"CSE-C, IT-A, CS-AI",False,3
+lab,python,lab overall,Dr. Nair,6.47,19719,87.8,41.6,"CSE-B, CSE-C, IT-A",False,1
+lab,python,lab overall,Prof. Bansal,6.47,9810,88.2,41.3,"IT-B, CS-AI",False,1
+lab,python,lab overall,Prof. Joshi,6.46,14726,87.9,41.3,"CSE-A, CS-DS",False,3
+theory,coa,overall,Dr. Ananya,6.49,9861,92.6,37.2,"CS-AI, CS-DS",False,1
+theory,coa,overall,Dr. Sharma,6.46,24602,92.1,37.0,"CSE-A, CSE-B, IT-A",False,2
+theory,coa,overall,Prof. Verma,6.44,9792,92.1,36.7,"CSE-C, IT-B",False,3
+theory,coa,unit 1,Dr. Ananya,6.68,9861,89.7,43.9,"CS-AI, CS-DS",False,1
+theory,coa,unit 1,Dr. Sharma,6.64,24602,89.1,43.7,"CSE-A, CSE-B, IT-A",False,2
+theory,coa,unit 1,Prof. Verma,1.6,9792,89.0,43.1,"CSE-C, IT-B",True,3
+theory,coa,unit 2,Dr. Ananya,6.64,9861,89.1,43.8,"CS-AI, CS-DS",False,1
+theory,coa,unit 2,Prof. Verma,6.63,9792,89.1,43.6,"CSE-C, IT-B",False,2
+theory,coa,unit 2,Dr. Sharma,6.62,24602,88.9,43.6,"CSE-A, CSE-B, IT-A",False,3
+theory,coa,unit 3,Prof. Verma,6.65,9792,89.1,43.8,"CSE-C, IT-B",False,1
+theory,coa,unit 3,Dr. Ananya,6.64,9861,89.4,43.4,"CS-AI, CS-DS",False,2
+theory,coa,unit 3,Dr. Sharma,6.62,24602,89.0,43.4,"CSE-A, CSE-B, IT-A",False,3
+theory,coa,unit 4,Dr. Sharma,6.64,24602,89.1,43.6,"CSE-A, CSE-B, IT-A",False,1
+theory,coa,unit 4,Prof. Verma,6.64,9792,89.2,43.7,"CSE-C, IT-B",False,1
+theory,coa,unit 4,Dr. Ananya,6.62,9861,88.8,43.6,"CS-AI, CS-DS",False,3
+theory,coa,unit 5,Dr. Sharma,6.64,24602,89.2,43.6,"CSE-A, CSE-B, IT-A",False,1
+theory,coa,unit 5,Dr. Ananya,6.61,9861,88.9,43.2,"CS-AI, CS-DS",False,2
+theory,coa,unit 5,Prof. Verma,6.58,9792,88.7,42.9,"CSE-C, IT-B",False,3
+theory,cyber,overall,Dr. Malhotra,6.5,14816,92.2,37.8,"IT-A, CS-DS",False,1
+theory,cyber,overall,Prof. Tiwari,6.48,14754,91.8,37.9,"CSE-B, IT-B, CS-AI",False,2
+theory,cyber,overall,Dr. Saxena,6.46,14685,92.0,37.2,"CSE-A, CSE-C",False,3
+theory,cyber,unit 1,Dr. Malhotra,6.68,14816,89.3,44.2,"IT-A, CS-DS",False,1
+theory,cyber,unit 1,Prof. Tiwari,6.67,14754,89.3,44.2,"CSE-B, IT-B, CS-AI",False,2
+theory,cyber,unit 1,Dr. Saxena,6.62,14685,89.1,43.3,"CSE-A, CSE-C",False,3
+theory,cyber,unit 2,Dr. Saxena,6.65,14685,89.1,43.8,"CSE-A, CSE-C",False,1
+theory,cyber,unit 2,Prof. Tiwari,6.65,14754,89.0,44.0,"CSE-B, IT-B, CS-AI",False,1
+theory,cyber,unit 2,Dr. Malhotra,6.63,14816,88.8,43.9,"IT-A, CS-DS",False,3
+theory,cyber,unit 3,Prof. Tiwari,6.64,14754,89.3,43.6,"CSE-B, IT-B, CS-AI",False,1
+theory,cyber,unit 3,Dr. Malhotra,6.63,14816,89.0,43.6,"IT-A, CS-DS",False,2
+theory,cyber,unit 3,Dr. Saxena,6.62,14685,89.0,43.4,"CSE-A, CSE-C",False,3
+theory,cyber,unit 4,Dr. Malhotra,6.67,14816,89.1,44.2,"IT-A, CS-DS",False,1
+theory,cyber,unit 4,Prof. Tiwari,6.66,14754,89.2,43.9,"CSE-B, IT-B, CS-AI",False,2
+theory,cyber,unit 4,Dr. Saxena,6.61,14685,89.0,43.3,"CSE-A, CSE-C",False,3
+theory,cyber,unit 5,Dr. Malhotra,6.66,14816,89.2,43.9,"IT-A, CS-DS",False,1
+theory,cyber,unit 5,Prof. Tiwari,6.66,14754,89.3,43.8,"CSE-B, IT-B, CS-AI",False,1
+theory,cyber,unit 5,Dr. Saxena,6.64,14685,89.1,43.6,"CSE-A, CSE-C",False,3
+theory,ds,overall,Dr. Kapoor,6.49,9833,92.1,37.8,"IT-B, CS-DS",False,1
+theory,ds,overall,Prof. Mishra,6.48,19694,92.3,37.3,"CSE-C, IT-A, CS-AI",False,2
+theory,ds,overall,Dr. Singhal,6.45,14728,92.1,36.9,"CSE-A, CSE-B",False,3
+theory,ds,unit 1,Prof. Mishra,6.67,19694,89.1,44.2,"CSE-C, IT-A, CS-AI",False,1
+theory,ds,unit 1,Dr. Kapoor,6.66,9833,88.9,44.3,"IT-B, CS-DS",False,2
+theory,ds,unit 1,Dr. Singhal,6.61,14728,88.5,43.6,"CSE-A, CSE-B",False,3
+theory,ds,unit 2,Dr. Kapoor,6.65,9833,89.2,43.8,"IT-B, CS-DS",False,1
+theory,ds,unit 2,Prof. Mishra,6.65,19694,89.1,43.9,"CSE-C, IT-A, CS-AI",False,1
+theory,ds,unit 2,Dr. Singhal,6.64,14728,88.9,43.8,"CSE-A, CSE-B",False,3
+theory,ds,unit 3,Dr. Kapoor,6.67,9833,89.4,44.0,"IT-B, CS-DS",False,1
+theory,ds,unit 3,Prof. Mishra,6.66,19694,89.2,44.1,"CSE-C, IT-A, CS-AI",False,2
+theory,ds,unit 3,Dr. Singhal,6.62,14728,89.0,43.4,"CSE-A, CSE-B",False,3
+theory,ds,unit 4,Dr. Kapoor,6.65,9833,89.2,43.8,"IT-B, CS-DS",False,1
+theory,ds,unit 4,Dr. Singhal,6.65,14728,89.2,43.8,"CSE-A, CSE-B",False,1
+theory,ds,unit 4,Prof. Mishra,6.64,19694,89.2,43.6,"CSE-C, IT-A, CS-AI",False,3
+theory,ds,unit 5,Prof. Mishra,6.68,19694,89.4,44.1,"CSE-C, IT-A, CS-AI",False,1
+theory,ds,unit 5,Dr. Kapoor,6.67,9833,89.3,44.0,"IT-B, CS-DS",False,2
+theory,ds,unit 5,Dr. Singhal,6.62,14728,88.8,43.5,"CSE-A, CSE-B",False,3
+theory,dstl,overall,Prof. Khan,6.5,14793,92.3,37.7,"IT-A, CS-AI",False,1
+theory,dstl,overall,Dr. Iyer,6.46,14787,92.1,37.1,"CSE-B, CSE-C, CS-DS",False,2
+theory,dstl,overall,Prof. Gupta,6.45,14675,91.7,37.3,"CSE-A, IT-B",False,3
+theory,dstl,unit 1,Prof. Khan,6.65,14793,88.9,44.0,"IT-A, CS-AI",False,1
+theory,dstl,unit 1,Prof. Gupta,6.62,14675,88.7,43.7,"CSE-A, IT-B",False,2
+theory,dstl,unit 1,Dr. Iyer,6.6,14787,88.6,43.5,"CSE-B, CSE-C, CS-DS",False,3
+theory,dstl,unit 2,Prof. Khan,6.71,14793,89.7,44.4,"IT-A, CS-AI",False,1
+theory,dstl,unit 2,Prof. Gupta,6.6,14675,88.7,43.4,"CSE-A, IT-B",False,2
+theory,dstl,unit 2,Dr. Iyer,6.59,14787,88.8,43.1,"CSE-B, CSE-C, CS-DS",False,3
+theory,dstl,unit 3,Prof. Gupta,6.63,14675,88.7,43.8,"CSE-A, IT-B",False,1
+theory,dstl,unit 3,Prof. Khan,6.62,14793,89.0,43.4,"IT-A, CS-AI",False,2
+theory,dstl,unit 3,Dr. Iyer,6.6,14787,89.1,42.9,"CSE-B, CSE-C, CS-DS",False,3
+theory,dstl,unit 4,Prof. Khan,6.71,14793,89.8,44.5,"IT-A, CS-AI",False,1
+theory,dstl,unit 4,Dr. Iyer,6.61,14787,89.0,43.1,"CSE-B, CSE-C, CS-DS",False,2
+theory,dstl,unit 4,Prof. Gupta,6.61,14675,88.8,43.4,"CSE-A, IT-B",False,2
+theory,dstl,unit 5,Prof. Khan,6.67,14793,89.4,44.1,"IT-A, CS-AI",False,1
+theory,dstl,unit 5,Dr. Iyer,6.64,14787,89.3,43.5,"CSE-B, CSE-C, CS-DS",False,2
+theory,dstl,unit 5,Prof. Gupta,6.63,14675,88.9,43.7,"CSE-A, IT-B",False,3
+theory,maths4,overall,Dr. Mehta,6.47,14816,92.2,37.2,"IT-A, CS-DS",False,1
+theory,maths4,overall,Dr. Rajesh,6.47,19604,92.2,37.2,"CSE-A, CSE-C, CS-AI",False,1
+theory,maths4,overall,Prof. Sneha,6.46,9835,92.0,37.2,"CSE-B, IT-B",False,3
+theory,maths4,unit 1,Prof. Sneha,6.7,9835,89.6,44.4,"CSE-B, IT-B",False,1
+theory,maths4,unit 1,Dr. Mehta,6.62,14816,88.8,43.6,"IT-A, CS-DS",False,2
+theory,maths4,unit 1,Dr. Rajesh,6.62,19604,89.1,43.4,"CSE-A, CSE-C, CS-AI",False,2
+theory,maths4,unit 2,Prof. Sneha,6.62,9835,88.8,43.5,"CSE-B, IT-B",False,1
+theory,maths4,unit 2,Dr. Mehta,6.61,14816,89.1,43.1,"IT-A, CS-DS",False,2
+theory,maths4,unit 2,Dr. Rajesh,6.6,19604,88.8,43.2,"CSE-A, CSE-C, CS-AI",False,3
+theory,maths4,unit 3,Prof. Sneha,6.68,9835,89.3,44.2,"CSE-B, IT-B",False,1
+theory,maths4,unit 3,Dr. Rajesh,6.63,19604,88.9,43.6,"CSE-A, CSE-C, CS-AI",False,2
+theory,maths4,unit 3,Dr. Mehta,1.64,14816,89.4,43.5,"IT-A, CS-DS",True,3
+theory,maths4,unit 4,Dr. Rajesh,6.64,19604,89.0,43.8,"CSE-A, CSE-C, CS-AI",False,1
+theory,maths4,unit 4,Dr. Mehta,6.62,14816,89.0,43.5,"IT-A, CS-DS",False,2
+theory,maths4,unit 4,Prof. Sneha,6.58,9835,88.8,42.9,"CSE-B, IT-B",False,3
+theory,maths4,unit 5,Dr. Mehta,6.68,14816,89.2,44.3,"IT-A, CS-DS",False,1
+theory,maths4,unit 5,Prof. Sneha,6.65,9835,89.0,44.0,"CSE-B, IT-B",False,2
+theory,maths4,unit 5,Dr. Rajesh,6.61,19604,88.9,43.3,"CSE-A, CSE-C, CS-AI",False,3
+theory,python,overall,Dr. Nair,6.5,19719,92.0,37.9,"CSE-B, CSE-C, IT-A",False,1
+theory,python,overall,Prof. Bansal,6.48,9810,92.1,37.5,"IT-B, CS-AI",False,2
+theory,python,overall,Prof. Joshi,6.44,14726,91.9,36.8,"CSE-A, CS-DS",False,3
+theory,python,unit 1,Prof. Bansal,6.66,9810,89.2,44.0,"IT-B, CS-AI",False,1
+theory,python,unit 1,Dr. Nair,6.65,19719,89.2,43.9,"CSE-B, CSE-C, IT-A",False,2
+theory,python,unit 1,Prof. Joshi,6.64,14726,89.0,43.8,"CSE-A, CS-DS",False,3
+theory,python,unit 2,Prof. Bansal,6.66,9810,89.2,44.0,"IT-B, CS-AI",False,1
+theory,python,unit 2,Prof. Joshi,6.64,14726,89.2,43.6,"CSE-A, CS-DS",False,2
+theory,python,unit 2,Dr. Nair,6.64,19719,89.1,43.8,"CSE-B, CSE-C, IT-A",False,2
+theory,python,unit 3,Dr. Nair,6.65,19719,89.1,43.9,"CSE-B, CSE-C, IT-A",False,1
+theory,python,unit 3,Prof. Bansal,6.64,9810,88.5,44.3,"IT-B, CS-AI",False,2
+theory,python,unit 3,Prof. Joshi,6.62,14726,89.0,43.4,"CSE-A, CS-DS",False,3
+theory,python,unit 4,Dr. Nair,6.63,19719,88.8,43.7,"CSE-B, CSE-C, IT-A",False,1
+theory,python,unit 4,Prof. Bansal,6.63,9810,88.9,43.7,"IT-B, CS-AI",False,1
+theory,python,unit 4,Prof. Joshi,6.62,14726,88.9,43.5,"CSE-A, CS-DS",False,3
+theory,python,unit 5,Prof. Bansal,6.7,9810,89.3,44.6,"IT-B, CS-AI",False,1
+theory,python,unit 5,Dr. Nair,6.65,19719,89.0,44.0,"CSE-B, CSE-C, IT-A",False,2
+theory,python,unit 5,Prof. Joshi,6.62,14726,88.8,43.6,"CSE-A, CS-DS",False,3
