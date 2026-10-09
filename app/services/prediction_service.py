@@ -2,13 +2,15 @@
 CGPA prediction service.
 
 Inference flow:
-  1. Validates and receives student input data.
-  2. Encodes sports activity level using the 5 one-hot features:
-     sports_high, sports_low, sports_moderate, sports_none, sports_unknown.
-  3. Builds a single-row DataFrame aligned with the model's exact 63 features.
-  4. Calls get_prediction_confidence() from student_grade_predictor.pkl.
-  5. Returns predicted_grade, confidence_score, and confidence_display.
+  1. Receive a student roll number.
+  2. Fetch that student's full row from the Neon database.
+  3. Build the model's exact 63 features (58 numeric + 5 sports one-hots).
+  4. Run get_prediction_confidence() from student_grade_predictor.pkl.
+  5. Return predicted_grade, confidence_score, confidence_display.
 """
+from __future__ import annotations
+
+import sys
 from functools import lru_cache
 from pathlib import Path
 
@@ -16,9 +18,13 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from app.schemas.student_schema import StudentCGPAInput
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
-MODEL_PATH = Path(__file__).resolve().parents[2] / "artifacts" / "student_grade_predictor.pkl"
+from ml_pipeline import db_backend  # noqa: E402
+
+MODEL_PATH = REPO_ROOT / "artifacts" / "student_grade_predictor.pkl"
 SPORTS_LEVELS = ["high", "low", "moderate", "none", "unknown"]
 
 
@@ -60,43 +66,54 @@ class ModelNotAvailableError(Exception):
     """Raised when the model file is missing or cannot be loaded."""
 
 
+class StudentNotFoundError(Exception):
+    """Raised when the roll number / name is not in the database."""
+
+
 @lru_cache(maxsize=1)
 def load_predictor() -> StudentGradePredictor:
-    """Loads the predictor pickle once and caches it in memory."""
-    if not MODEL_PATH.exists():
-        raise ModelNotAvailableError(f"Model file not found at: {MODEL_PATH}")
-
+    """Loads the predictor bundle from the local artifacts/*.pkl file."""
     # Inject StudentGradePredictor into __main__ so pickle resolves the notebook's __main__ reference
     import __main__
     if not hasattr(__main__, "StudentGradePredictor"):
         __main__.StudentGradePredictor = StudentGradePredictor
 
+    if not MODEL_PATH.exists():
+        raise ModelNotAvailableError(f"No model file at: {MODEL_PATH}")
     try:
         return joblib.load(MODEL_PATH)
     except Exception as exc:
         raise ModelNotAvailableError(f"Could not load model artifact: {exc}") from exc
 
 
-def build_feature_row(student: StudentCGPAInput, feature_columns: list) -> pd.DataFrame:
-    """Converts student input into a 1-row DataFrame matching the exact 63 features."""
-    data = student.model_dump()
-    level = data.pop("sports_activity_level")
-    for name in SPORTS_LEVELS:
-        data[f"sports_{name}"] = int(level == name)
-
-    row = pd.DataFrame([data])
-    missing = [c for c in feature_columns if c not in row.columns]
+def build_feature_row(record: dict, feature_columns: list) -> pd.DataFrame:
+    """Builds a 1-row DataFrame with the exact model features from a DB row."""
+    missing = [c for c in feature_columns if not c.startswith("sports_") and c not in record]
     if missing:
-        raise ModelNotAvailableError(f"Features missing from input row: {missing}")
+        raise ModelNotAvailableError(f"Student row is missing model features: {missing}")
 
-    # Enforce exact feature order from the model
-    return row[feature_columns]
+    # Coerce every numeric feature to float (None / "" / strings -> NaN) so the
+    # XGBoost model always receives numeric dtypes.
+    row = {
+        c: pd.to_numeric(record.get(c), errors="coerce")
+        for c in feature_columns
+        if not c.startswith("sports_")
+    }
+    level = record.get("sports_activity_level")
+    for name in SPORTS_LEVELS:
+        row[f"sports_{name}"] = int(level == name)
+
+    return pd.DataFrame([row])[feature_columns]
 
 
-def predict_cgpa(student: StudentCGPAInput) -> dict:
-    """Predicts CGPA and computes confidence score."""
+def predict_cgpa_by_roll(roll_no: str) -> dict:
+    """Fetches the student from the database and predicts their final grade."""
+    record = db_backend.fetch_student(roll_no)
+    if not record:
+        raise StudentNotFoundError(f"No student found for '{roll_no}'.")
+
     predictor = load_predictor()
-    row = build_feature_row(student, predictor.feature_columns)
+    row = build_feature_row(record, predictor.feature_columns)
     result = predictor.get_prediction_confidence(row).iloc[0]
 
     confidence_display = str(result["Confidence_Score"])

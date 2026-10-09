@@ -1,6 +1,44 @@
+# ===========================================================================
+# Personal / study-only documents  --  kept locally, NOT pushed to the repo.
+# These were written for our own understanding, so they stay out of git.
+# ===========================================================================
+BACKEND_SETUP.md
+tests/MENTOR_GUIDE.md
+
+# ===========================================================================
+# Python
+# ===========================================================================
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# Virtual environments
 .venv/
 venv/
+env/
+ENV/
+
+# ===========================================================================
+# Secrets / local environment  (keep the example, ignore the real file)
+# ===========================================================================
 .env
+!.env.example
+
+# ===========================================================================
+# Editors / OS
+# ===========================================================================
 .vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini

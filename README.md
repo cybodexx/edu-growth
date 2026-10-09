@@ -1,288 +1,411 @@
-# 🎓 Edu Growth
-### AI-Driven Batch Performance & Student Analytics System
+# EduGrowth — Student Performance Analytics Platform
 
-> **Team Ctrl Freaks** · Domain: EdTech / Machine Learning · Doc Version 1.0
+An end-to-end data-science platform that turns raw, messy student records into
+**actionable academic insights**: cleaned data, dimensionality reduction, CGPA
+prediction, risk detection, and **automatic mentor assignment** — exposed through
+a FastAPI service and an ML library.
 
-Edu Growth analyzes a **99-column student performance dataset** covering six subjects, four practical labs, attendance, assignment behavior, extracurricular participation, and prior CGPA. It is designed to surface subject and unit-level patterns, estimate the final semester grade from historical examples, and identify unusual records for review. The current spreadsheet is a student-level snapshot; it does not contain teacher efficacy, risk labels, or assessment dates.
+- **Data →** clean the raw cohort → engineered feature tables.
+- **Models →** PCA, CGPA regression, per-subject risk classifiers, KMeans mentor clustering.
+- **Serve →** FastAPI endpoints (`/api/v1/...`) for predictions and mentor plans.
+- **No fragile model files for mentors:** the mentor engine re-fits in ~5 s.
 
----
-
-## 📑 Table of Contents
-1. [Problem Statement](#-problem-statement)
-2. [Solution](#-solution)
-3. [Dataset: 99 Columns](#-dataset-99-columns)
-4. [Analysis Workflow](#-analysis-workflow)
-5. [Machine Learning Models](#-machine-learning-models)
-6. [Database Design](#-database-design-postgresql)
-7. [API Overview](#-api-overview)
-8. [Tech Stack](#-tech-stack)
-9. [Setup](#-setup)
-10. [Project Structure](#-project-structure)
-11. [Team](#-team)
-12. [Roadmap](#-roadmap)
+<p align="center">
+  <a href="https://render.com/deploy?repo=https://github.com/cybodexx/edu-growth">
+    <img src="https://render.com/images/deploy-to-render-button.svg" alt="Deploy to Render" height="40">
+  </a>
+</p>
 
 ---
 
-## ⚠️ Problem Statement
+## 1. What the project contains
 
-| Problem | What happens today |
-|---|---|
-| **Coarse evaluation** | Overall grades can hide differences between subjects and the five unit scores recorded for each subject. |
-| **Disconnected signals** | Attendance, assessment marks, assignment delays, lab performance, and participation are often reviewed separately. |
-| **Late intervention** | A final grade alone does not show which currently available signals may warrant an earlier human review. |
-| **Unclear patterns** | Staff need a consistent way to compare students and subjects without treating a model score as a diagnosis. |
+| Area | What it does | Where |
+|---|---|---|
+| **Data cleaning** | de-duplicate, fix wrong values, handle outliers, fill missing, repair grades | `notebooks/01_eda_data_cleaning.ipynb` |
+| **Dimensionality reduction** | standardise features, inspect explained variance, PCA transform | `notebooks/02_pca_dimensionality_reduction.ipynb` |
+| **CGPA prediction** | XGBoost regressor → predicted final grade + confidence | `notebooks/03_cgpa_prediction_model.ipynb`, `artifacts/student_grade_predictor.pkl` |
+| **Mentor assignment** | unit/subject/lab analysis, KMeans risk clustering, hardcoded mentor ranking, peer matching | `notebooks/04_mentor_clustering_model.ipynb`, `ml_pipeline/` |
+| **Risk prediction** | per-subject / per-lab / attendance risk classifiers (LogReg + XGBoost) | `notebooks/05_risk_prediction.ipynb` |
+| **Serving layer** | FastAPI app with CGPA prediction + mentor endpoints | `app/` |
+| **Database layer** | Neon / PostgreSQL adapter (**required**; all reads/writes + auto tables) | `ml_pipeline/db_backend.py` |
+| **Desktop UI** | JavaFX client (planned / scaffold) | `frontend_javafx/` |
 
-## 💡 Solution
+---
 
-- **One validated student profile** – ingest the spreadsheet and check required columns, types, duplicates, missing values, and plausible ranges.
-- **Subject and unit insights** – compare ST1, ST2, PUT, unit marks, assignments, quizzes, and attendance across the six subjects.
-- **Practical performance view** – compare execution and viva scores with submission delays across the four labs.
-- **Final-grade estimation** – train a supervised model using `final_semester_grade` as the target and only information available before that outcome.
-- **Exploratory student groups and outliers** – use PCA, clustering, and anomaly scores to support review, not to assign definitive risk labels.
-- **Human-reviewed support** – show contributing signals and keep medical leave as sensitive context, never as a penalty or an automated decision.
-
-## 🗺 Analysis Workflow
+## 2. End-to-end data & model pipeline
 
 ```mermaid
 flowchart TD
-    A["Google Sheet / CSV<br/>99 student fields"] --> B["Schema validation<br/>IDs, types, ranges, missingness"]
-    B --> C["EDA and preprocessing<br/>encode categories, impute, scale"]
-    C --> D["Subject and unit analysis"]
-    C --> E["PCA feature transformation"]
-    E --> F["Grade model<br/>target: final_semester_grade"]
-    E --> G["Exploratory clustering<br/>K-Means"]
-    E --> H["Outlier review<br/>Isolation Forest"]
-    D --> I["Reviewed analytics and reports"]
-    F --> I
-    G --> I
-    H --> I
+    RAW["raw data<br/>(offline notebooks)"] --> NB1["01 · EDA &amp; Data Cleaning"]
+    NB1 --> PROC["cleaned cohort"]
+    PROC -->|"seeded once"| DB[("Neon students")]
+
+    NB3["03 · CGPA Prediction<br/>XGBoost regressor"] --> M3["artifacts/student_grade_predictor.pkl"]
+
+    DB --> NB4["04 · Mentor Assignment<br/>KMeans + hardcoded mentor ranking"]
+    NB4 --> MA[("Neon mentor_assignments")]
+
+    DB --> API["FastAPI<br/>app/"]
+    M3 --> API
+    API --> UI["JavaFX desktop client"]
 ```
 
-## 📋 Dataset: 99 Columns
-
-**Source:** [Edu Growth student dataset (Google Sheets)](https://docs.google.com/spreadsheets/d/18E6kDb3bGOOatyn9IRaZRoQnjmRVLRNUnkMCi7aCUPo/edit?usp=sharing). Export a CSV copy to `data/raw/` before running analysis. The schema groups below add up to 99 columns.
-
-| Group | Count | Columns |
-|---|---:|---|
-| Student information and add-ons | 11 | `roll_no`, `full_name`, `class_section`, `overall_attendance_pct`, `theory_attendance_pct`, `practical_attendance_pct`, `previous_cgpa`, `medical_leave_days`, `society_participation_pc`, `sports_activity_level`, `final_semester_grade` |
-| Subject attendance | 6 | `coa_attendance_pct`, `maths4_attendance_pct`, `dstl_attendance_pct`, `ds_attendance_pct`, `python_attendance_pct`, `cyber_attendance_pct` |
-| Lab attendance | 4 | `lab_ds_attendance_pct`, `lab_python_attendance_pct`, `lab_coa_attendance_pct`, `lab_cyber_attendance_pct` |
-| COA assessments | 11 | `coa_st1_marks`, `coa_st2_marks`, `coa_put_marks`, `coa_unit_1_marks`–`coa_unit_5_marks`, `coa_assignment_score`, `coa_assignment_delay_hours`, `coa_quiz_score` |
-| Maths4 assessments | 11 | `maths4_st1_marks`, `maths4_st2_marks`, `maths4_put_marks`, `maths4_unit_1_marks`–`maths4_unit_5_marks`, `maths4_assignment_score`, `maths4_assignment_delay_hours`, `maths4_quiz_score` |
-| DSTL assessments | 11 | `dstl_st1_marks`, `dstl_st2_marks`, `dstl_put_marks`, `dstl_unit_1_marks`–`dstl_unit_5_marks`, `dstl_assignment_score`, `dstl_assignment_delay_hours`, `dstl_quiz_score` |
-| DS assessments | 11 | `ds_st1_marks`, `ds_st2_marks`, `ds_put_marks`, `ds_unit_1_marks`–`ds_unit_5_marks`, `ds_assignment_score`, `ds_assignment_delay_hours`, `ds_quiz_score` |
-| Python assessments | 11 | `python_st1_marks`, `python_st2_marks`, `python_put_marks`, `python_unit_1_marks`–`python_unit_5_marks`, `python_assignment_score`, `python_assignment_delay_hours`, `python_quiz_score` |
-| Cybersecurity assessments | 11 | `cyber_st1_marks`, `cyber_st2_marks`, `cyber_put_marks`, `cyber_unit_1_marks`–`cyber_unit_5_marks`, `cyber_assignment_score`, `cyber_assignment_delay_hours`, `cyber_quiz_score` |
-| Lab performance | 12 | For each of `ds`, `python`, `coa`, and `cyber`: `lab_<subject>_execution_score`, `lab_<subject>_viva_score`, `lab_<subject>_submission_delay_hours` |
-| **Total** | **99** | Includes `final_semester_grade`, the supervised-learning target |
-
-The source sheet's actual value formats, score scales, missing-value conventions, and row count must be profiled during EDA. Do not infer scale limits or category encodings from the column names alone.
-
-## 📊 Analysis Capabilities
-
-- **Student and cohort summaries:** compare attendance, prior CGPA, marks, labs, and participation overall and by `class_section`.
-- **Subject and unit diagnostics:** compare ST1, ST2, PUT, unit marks, assignment scores/delays, and quiz scores for each subject.
-- **Lab diagnostics:** summarize execution, viva, attendance, and submission-delay measures for each lab.
-- **Grade prediction:** predict `final_semester_grade` from eligible pre-outcome fields; do not include identifiers or the target among predictors.
-- **Exploratory PCA and clustering:** reduce correlated numeric features and examine student groupings; clusters require interpretation and validation.
-- **Anomaly review:** use Isolation Forest to flag unusual feature combinations for a person to inspect. An anomaly score is not a validated risk label or diagnosis.
-
-This is a cross-sectional dataset unless additional dated snapshots are supplied. It cannot establish learning velocity, recovery after interventions, or sudden changes over time. It contains no teacher identifiers or teacher outcomes, so teacher-efficacy scoring and automatic faculty assignment are not supported. Peer-mentor suggestions would also need explicit eligibility, capacity, and safeguarding rules before implementation.
-
 ---
 
-## 🤖 Machine Learning Models
-
-| Objective | Algorithm | Input Features | Output / Evaluation |
-|---|---|---|---|
-| **Final semester grade estimate** | Baseline classifier or regressor, selected after inspecting target values | Eligible attendance, prior CGPA, assessment, assignment, quiz, lab, and participation fields | Predicted `final_semester_grade`; report validation metrics appropriate to its actual type |
-| **Anomaly review** | Isolation Forest | Scaled numeric features selected for the use case | Anomaly score for human review; not a ground-truth risk class |
-| **Exploratory grouping** | PCA followed by K-Means | Scaled, leakage-checked academic features | Candidate clusters to interpret and validate; no fixed labels or cluster count assumed |
-
-### Preprocessing & Feature Engineering
-1. Validate the 99-column schema, duplicate `roll_no` values, data types, score ranges, and missingness before imputation.
-2. Exclude `roll_no` and `full_name` from model features. Treat `class_section` as categorical and consider it when splitting evaluation data.
-3. Exclude `final_semester_grade` from predictors; use it only as the supervised target. Confirm every predictor is available before the grade is known to prevent leakage.
-4. Encode `sports_activity_level`, impute only after inspecting missingness, and scale numeric features for PCA and distance-based models.
-5. Keep `medical_leave_days` out of automated risk or anomaly scoring by default. If used for analysis, restrict access and interpret it as sensitive context, not a performance penalty.
-6. Use held-out validation and report measured results; no performance target is claimed until the dataset has been evaluated.
-
----
-
-## 🗄 Database Design (PostgreSQL)
-
-The supplied CSV/Sheet is the source of truth. A database is optional for initial EDA; if PostgreSQL is added, retain the source fields in an import table and store generated outputs separately. The dataset contains no teacher records.
+## 3. System architecture
 
 ```mermaid
-erDiagram
-    DATASET_ROWS ||--o{ MODEL_OUTPUTS : "scored by"
+flowchart LR
+    subgraph Stored["Stored data"]
+        NEON["Neon DB<br/>students · mentor_assignments · risk_predictions"]
+        ART["artifacts/<br/>model pkl"]
+    end
 
-    DATASET_ROWS {
-        int row_id PK
-        string roll_no
-        string full_name
-        string class_section
-        decimal previous_cgpa
-        string final_semester_grade
-    }
-    MODEL_OUTPUTS {
-        int output_id PK
-        int row_id FK
-        string model_name
-        string model_version
-        string predicted_grade
-        decimal anomaly_score
-        int cluster_id
-        datetime created_at
-    }
+    subgraph Training["notebooks/ (offline training & analysis)"]
+        N1["01 clean"]
+        N2["02 PCA"]
+        N3["03 CGPA"]
+        N4["04 mentor"]
+        N5["05 risk"]
+    end
+
+    subgraph Runtime["ml_pipeline/ (importable library)"]
+        CFG["config.py"]
+        MA["mentor_assigner.py"]
+        DB["db_backend.py"]
+    end
+
+    subgraph Service["app/ (FastAPI)"]
+        MAIN["main.py"]
+        CGP["POST /cgpa/predict"]
+        MEN["mentor endpoints"]
+    end
+
+    subgraph Client["Clients"]
+        JFX["frontend_javafx (JavaFX)"]
+        DOCS["Swagger /docs"]
+    end
+
+    N1 --> NEON
+    N2 --> ART
+    N3 --> ART
+    N4 --> NEON
+    N5 --> ART
+    ART --> CGP
+    CFG --> MA
+    NEON --> DB
+    DB --> MA
+    MA --> MEN
+    MAIN --> CGP
+    MAIN --> MEN
+    CGP --> JFX
+    MEN --> JFX
+    MAIN --> DOCS
 ```
 
-The diagram shows representative fields only; the import table must retain all 99 source columns. Restrict access to names, roll numbers, and medical leave data; do not expose them in model exports or general analytics.
+---
+
+## 4. Notebooks
+
+| # | Notebook | Input | Output |
+|---|---|---|---|
+| 01 | `01_eda_data_cleaning.ipynb` | raw CSV (offline) | cleaned CSV (offline) |
+| 02 | `02_pca_dimensionality_reduction.ipynb` | cleaned CSV (offline) | PCA CSV (offline) |
+| 03 | `03_cgpa_prediction_model.ipynb` | cleaned CSV (offline) | `artifacts/student_grade_predictor.pkl` |
+| 04 | `04_mentor_clustering_model.ipynb` | Neon `students` | Neon `mentor_assignments` |
+| 05 | `05_risk_prediction.ipynb` | cleaned CSV (offline) | `artifacts/risk_models.pkl` |
+
+Notebooks 01/02/03/05 are **offline** training/analysis (the running app never
+invokes them). Only notebook 04 touches the DB.
+
+**01 — EDA & Cleaning.** Load raw → check duplicates → column lists → missing
+values → clean text → fix wrong values → detect outliers → fill missing text
+numbers → repair final grade → univariate / bivariate / multivariate plots → save.
+
+**02 — PCA.** `StandardScaler` + `PCA`, explained-variance plots, component
+weights, transformed feature matrix saved for downstream use.
+
+**03 — CGPA model.** One-hot encodes `sports_activity_level`, drops outlier /
+grade-missing rows, trains an **XGBoost regressor** (with a RandomForest section),
+evaluates MAE/RMSE/R², and persists the 63-feature predictor bundle to
+`artifacts/`.
+
+**04 — Mentor.** KMeans risk clustering + hardcoded mentor ranking + mentor
+plans (detailed in §5).
+
+**05 — Risk.** Builds binary risk labels per subject (`< 65 %`), per lab, and for
+attendance (`< 60 %`), trains **LogisticRegression** and **XGBoost** classifiers
+per target, selects the best model + decision threshold, and writes per-student
+risk probabilities (`risk_output.csv`).
 
 ---
 
-## 🔌 API Overview
+## 5. Mentor assignment subsystem (deep dive)
 
-> Proposed endpoints only; the current FastAPI files are scaffolds and these routes are not implemented yet.
+Fully implemented in `ml_pipeline/` and usable at runtime (no notebook needed).
 
-| Method | Endpoint | Description |
-|---|---|---|
-| `POST` | `/api/v1/datasets/import` | Validate and import the 99-column CSV |
-| `GET` | `/api/v1/students/{roll_no}` | Student profile with subject, unit, attendance, and lab summaries |
-| `GET` | `/api/v1/students/{roll_no}/grade-prediction` | Estimated `final_semester_grade` with model version |
-| `GET` | `/api/v1/students/{roll_no}/anomaly` | Exploratory anomaly score, not a risk label |
-| `GET` | `/api/v1/analytics/subjects/{subject_code}` | Aggregate subject and unit analysis |
-| `GET` | `/api/v1/analytics/pca` | Explained variance and component loadings |
-| `GET` | `/api/v1/analytics/cohorts` | Validated exploratory cluster summaries |
+### 5.1 Pipeline
 
----
+```mermaid
+flowchart TD
+    S1["1 · Load cohort from Neon<br/>(DATABASE_URL required)"] --> S2
+    S2["2 · prepare_features()<br/>marks → unit % · subject % · lab %<br/>weakness counts · progress score"] --> S3
+    S3["3 · _train_clusters()<br/>StandardScaler + KMeans(k=4)<br/>Need Help / Fell Down / Normal / Topper"] --> S4
+    S4["4 · MENTOR_RANKING (config)<br/>hardcoded best→worst teacher per subject/lab<br/>+ hardcoded weak overrides"] --> S5
+    S5["5 · _build_peer_map()<br/>top-5 non-weak peers per section"] --> S6
+    S6["6 · analyze_student(roll_no_or_name)<br/>units · subjects · labs · mentors · peers"] --> S7["JSON dict + report_text"]
+    S6 --> S8["assign_all() → flat assignment table"]
+```
 
-## 🧰 Tech Stack
+### 5.2 How a mentor is chosen
 
-| Layer | Technology |
-|---|---|
-| **Data analysis** | Jupyter notebooks, pandas, NumPy |
-| **ML** | scikit-learn (preprocessing, PCA, regression/classification, K-Means, Isolation Forest) |
-| **Backend (planned)** | Python FastAPI and Uvicorn |
-| **Database (optional)** | PostgreSQL for imported rows and model outputs |
-| **Desktop UI (planned)** | JavaFX |
+```mermaid
+flowchart TD
+    A["Student + subject/unit"] --> B{"score or any unit<br/>below 40%?"}
+    B -- No --> C["No intervention needed"]
+    B -- Yes --> D["Look up hardcoded mentor ranking<br/>for the weakest unit"]
+    D --> E{"Candidate ==<br/>own teacher?"}
+    E -- Yes --> F["Skip"]
+    E -- No --> G{"Hardcoded-weak?"}
+    G -- Yes --> H["Keep as fallback"]
+    G -- No --> I["✅ Assign best mentor"]
+    F --> D
+    H --> D
+    D --> J{"Any candidate left?"}
+    J -- "weak only" --> K["Use fallback"]
+    J -- "own teacher only" --> L["Same teacher"]
+    J -- none --> M["No Mentor Available"]
+    I --> N["Attach peer mentor<br/>(round-robin top-5)"]
+    K --> N
+    L --> N
+```
 
----
+### 5.3 Risk clustering model
 
-## 🚀 Setup
+```mermaid
+flowchart LR
+    F["7 features<br/>avg_pct · min_pct · bad_subjects · bad_labs<br/>attendance · previous_cgpa · progress_score"] --> SC["StandardScaler"]
+    SC --> KM["KMeans(k=4, seed=42)"]
+    KM --> G0["Need Help · priority 1"]
+    KM --> G1["Fell Down · priority 2"]
+    KM --> G2["Normal · priority 3"]
+    KM --> G3["Topper · priority 4"]
+```
 
-The repository currently contains the project scaffold; the pipeline, API, and UI are not runnable implementations yet. To prepare the data for EDA:
-
-1. Export the linked Google Sheet as CSV and place it in `data/raw/` (for example, `messy_edu_growth_99_columns.csv`).
-2. Create and activate a Python 3.10+ virtual environment.
-3. Install the dependencies selected for the implementation. `requirements.txt` is currently empty, so dependency installation instructions will be added with the working pipeline.
-4. Run the notebooks in order: EDA and cleaning writes `data/processed/edu_growth_cleaned.csv`; PCA reads that file and writes `data/pca_transformed/edu_growth_pca.csv`; the CGPA, mentor, and risk notebooks read the cleaned file.
-5. Model outputs are written under `artifacts/` (`student_grade_predictor.pkl`, `mentor_assignments.csv`, `risk_output.csv`, and `risk_models.pkl`).
-6. The notebooks find the project root when launched from the repository root or `notebooks/`; keep the exported dataset and any `.env` secrets local, and do not commit personal student data.
-
----
-
-## 📁 Project Structure
+### 5.4 Example mentor report
 
 ```text
-data/
-├── raw/
-│   └── messy_edu_growth_99_columns.csv
-├── processed/
-│   └── edu_growth_cleaned.csv
-└── pca_transformed/
-    └── edu_growth_pca.csv
-notebooks/
-├── 01_eda_data_cleaning.ipynb
-├── 02_pca_dimensionality_reduction.ipynb
-├── 03_cgpa_prediction_model.ipynb
-├── 04_mentor_clustering_model.ipynb
-└── 05_risk_prediction.ipynb
-ml_pipeline/
-├── __init__.py
-├── config.py
-├── preprocessor.py
-├── pca_transformer.py
-├── trainer.py
-└── utils.py
-artifacts/
-├── student_grade_predictor.pkl
-├── mentor_assignments.csv
-├── risk_output.csv
-└── risk_models.pkl
-app/
-├── __init__.py
-├── main.py
-├── api/
-│   ├── __init__.py
-│   └── v1/
-│       ├── __init__.py
-│       ├── router.py
-│       └── endpoints/
-│           ├── __init__.py
-│           ├── pca_analytics.py
-│           ├── mentor.py
-│           ├── cgpa.py
-│           ├── risk.py
-│           └── velocity.py
-├── core/
-│   ├── config.py
-│   ├── security.py
-│   └── database.py
-├── services/
-│   ├── __init__.py
-│   ├── pca_service.py
-│   ├── prediction_service.py
-│   └── mentor_service.py
-└── schemas/
-    ├── __init__.py
-    ├── student_schema.py
-    ├── pca_schema.py
-    └── response_schema.py
-frontend_javafx/
-tests/
-├── test_pca_pipeline.py
-└── test_endpoints.py
-requirements.txt
-.env.example
-README.md
+Kavya Verma | 210029038252 | CSE-A
+Need Help | priority 1
+'Need Help' (priority 1). 10 mentor intervention(s) required.
+COA 21.8 % | weak: Unit 1, Unit 2, Unit 3, Unit 4, Unit 5 | mentor: Dr. Ananya
+MATHS4 33.9 % | weak: Unit 2, Unit 3, Unit 4, Unit 5 | mentor: Prof. Sneha
+DSTL 15.8 % | weak: Unit 1, Unit 2, Unit 3, Unit 4, Unit 5 | mentor: Prof. Khan
+DS 6.5 % | weak: Unit 1, Unit 2, Unit 3, Unit 4, Unit 5 | mentor: Dr. Kapoor
+PYTHON 8.4 % | weak: Unit 1, Unit 2, Unit 3, Unit 4, Unit 5 | mentor: Dr. Nair
+CYBER 21.9 % | weak: Unit 1, Unit 2, Unit 3, Unit 4, Unit 5 | mentor: Dr. Malhotra
+DS LAB 34.9 % | weak: Execution, Viva | mentor: Dr. Kapoor
+PYTHON LAB 33.3 % | weak: Execution, Viva | mentor: Dr. Nair
+COA LAB 18.8 % | weak: Execution, Viva | mentor: Prof. Verma
+CYBER LAB 19.4 % | weak: Execution, Viva | mentor: Prof. Tiwari
 ```
 
-Keep local datasets, trained model files, and `.env` secrets out of version control; `.env.example` is the safe configuration template. The notebook target is `final_semester_grade`, and anomaly scores are not risk labels.
+```python
+from ml_pipeline import get_student_mentor, get_student_report
+
+get_student_report("210029038252")   # the text report above
+get_student_mentor("210029038252")   # full detailed dict (for the API)
+get_student_mentor("Kavya Verma")    # name lookup works too
+```
 
 ---
 
-## 👥 Team
+## 6. Repository structure
 
-**Team Ctrl Freaks**
+```text
+edu-growth/
+├── ml_pipeline/                 # importable runtime library
+│   ├── config.py                # subjects, thresholds, hardcoded mentor ranking, overrides
+│   ├── mentor_assigner.py       # mentor engine (KMeans + hardcoded ranking + assignment)
+│   ├── db_backend.py            # Neon/PostgreSQL adapter (auto tables, DB-only)
+│   └── __init__.py              # public exports
+├── notebooks/                   # offline training & analysis
+│   ├── 01_eda_data_cleaning.ipynb
+│   ├── 02_pca_dimensionality_reduction.ipynb
+│   ├── 03_cgpa_prediction_model.ipynb
+│   ├── 04_mentor_clustering_model.ipynb
+│   └── 05_risk_prediction.ipynb
+├── app/                         # FastAPI service
+│   ├── main.py
+│   ├── api/v1/router.py
+│   ├── api/v1/endpoints/        # cgpa.py + mentor.py + students.py (done), risk/velocity/pca (stubs)
+│   ├── schemas/                 # pydantic models (student, mentor, response)
+│   ├── services/                # prediction_service.py + mentor_service.py + student_service.py
+│   └── core/                    # config/database/security (stubs)
+├── data/                        # (empty — CSVs removed, data lives in Neon)
+├── artifacts/                   # trained model pkl (CGPA predictor)
+├── frontend_javafx/             # desktop client (scaffold)
+├── render.yaml                  # Render deploy blueprint (one-click)
+├── .env.example                 # environment template
+└── README.md
+```
 
-| Member | Domain | Mentor(s) |
+---
+
+## 7. Quickstart
+
+```bash
+# --- 1) Neon setup (one time) --------------------------------------------
+copy .env.example .env          # then set DATABASE_URL (Neon connection string)
+python -m ml_pipeline.db_backend --init
+python -m ml_pipeline.db_backend --status      # cleaned cohort already seeded (2000 rows)
+
+# The CGPA model is loaded from artifacts/student_grade_predictor.pkl.
+# To (re)build it, run notebook 03 (offline).
+
+# --- 2) Mentor engine (reads Neon, writes mentor_assignments) -------------
+python -c "from ml_pipeline import run_pipeline; run_pipeline()"
+python -c "from ml_pipeline import get_student_report; print(get_student_report('<roll_no>'))"
+
+# --- 3) FastAPI service ---------------------------------------------------
+uvicorn app.main:app --reload
+# docs: http://127.0.0.1:8000/docs
+```
+
+### One-click deploy on Render
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/cybodexx/edu-growth)
+
+1. Click the **Deploy to Render** button (repo `cybodexx/edu-growth`, branch `PRANAV-PRAJAPATI`).
+2. Render reads `render.yaml` and creates the Web Service automatically (install → `uvicorn app.main:app --host 0.0.0.0 --port $PORT` → `/health` probe).
+3. Set the env var **`DATABASE_URL`** to your Neon connection string.
+4. **Apply / Deploy** → live in ~2–3 minutes. Check `/health` and `/docs`.
+
+> The repo's branch is `PRANAV-PRAJAPATI` (not `main`) — if Render offers a branch
+> selector during the flow, pick that branch.
+
+---
+
+## 8. API
+
+The API is **public** — no token required. Authentication/authorization is
+handled by the separate **MongoDB + JS** auth service (two panels: **teacher**
+and **student**); this FastAPI only serves analytics.
+
+| Method | Path | Description |
 |---|---|---|
-| Suhani Agarwal | Machine Learning | Harsh Raj, Anjali Sirohi |
-| Syed Rafiuddin Altamash | Machine Learning | Harsh Raj, Anjali Sirohi |
-| Akash Raghuvanshi | Machine Learning | Harsh Raj, Anjali Sirohi |
-| Pranav Prajapati | Machine Learning | Harsh Raj, Anjali Sirohi |
-| Raunak Agrahari | Frontend | Akshat Sharma |
-| Vivek Soni | Backend | Shreya Singh |
-| Prashant Singh | Designing | — |
+| `GET` | `/health` | health probe |
+| `POST` | `/api/v1/cgpa/predict` | body `{"roll_no": "..."}` → XGBoost CGPA + confidence |
+| `GET` | `/api/v1/mentor/{student_id}` | full mentor analysis JSON (roll no **or** name) |
+| `GET` | `/api/v1/mentor/{student_id}/report` | printable text report |
+| `POST` | `/api/v1/mentor/analyze` | same as GET, JSON body `{"student_id": "..."}` |
+| `POST` | `/api/v1/students` | add/upsert a student (any columns) → **auto mentor** |
+| `PUT` | `/api/v1/students/{roll_no}` | partial update → **re-assign mentor** |
+| `GET` | `/api/v1/students` | list students (paged: `?limit=&offset=`) |
+| `GET` | `/api/v1/students/{roll_no}` | one student's full row |
+| `DELETE` | `/api/v1/students/{roll_no}` | delete a student + all derived rows |
+| — | `/api/v1/pca/...`, `/api/v1/risk/...`, `/api/v1/velocity/...` | ⬜ stubs |
 
-**Planned ownership:** Suhani & Pranav – data validation and preprocessing; ML team – final-grade modeling, PCA, clustering, and anomaly review; Raunak – JavaFX client; Vivek – FastAPI and optional PostgreSQL; Prashant – UI/UX design.
+### Data source
+
+The engine reads **only** `DATABASE_URL` (Neon). The cleaned cohort was seeded
+**once** into the `students` table (2000 rows); there is **no CSV dependency** in
+the code or at runtime. New students are added/updated straight through the
+`/api/v1/students` endpoints and immediately get a mentor. Mentor choices come
+from the hardcoded rankings in `ml_pipeline/config.py`. The trained CGPA model is
+loaded from `artifacts/student_grade_predictor.pkl`. See
+`ml_pipeline/db_backend.py`.
+
+```bash
+uvicorn app.main:app --reload
+# CGPA: send just the roll number
+curl -X POST http://127.0.0.1:8000/api/v1/cgpa/predict -H "Content-Type: application/json" -d "{\"roll_no\":\"210029038252\"}"
+curl http://127.0.0.1:8000/api/v1/mentor/210029038252
+curl http://127.0.0.1:8000/api/v1/mentor/210029038252/report
+# OpenAPI docs: http://127.0.0.1:8000/docs
+```
+
+The mentor endpoints wrap the same engine used by notebook 04
+(`ml_pipeline.get_student_mentor`). The fitted engine is cached in-process
+(`lru_cache`), so the first request pays the ~5 s fit and the rest are fast.
+Unknown roll numbers return **404**; if the engine cannot be fitted, **503**.
 
 ---
 
-## 🛣 Roadmap
+## 9. Data & artifacts
 
-- [x] 99-column spreadsheet schema documented
-- [ ] Export the source sheet and profile its rows, types, categories, missing values, and score scales
-- [ ] Implement schema validation, cleaning, and privacy-aware preprocessing
-- [ ] Fit and evaluate PCA; choose component count from measured explained variance
-- [ ] Train and validate a model for `final_semester_grade` after confirming target format and avoiding leakage
-- [ ] Evaluate exploratory K-Means clusters and Isolation Forest anomaly scores with human review
-- [ ] Implement CSV import and dataset-backed FastAPI analytics
-- [ ] Build the JavaFX analytics client
-- [ ] Collect dated snapshots and teacher-linked data before adding velocity or teacher-efficacy features
+| Path | Description |
+|---|---|
+| `artifacts/student_grade_predictor.pkl` | CGPA model bundle (63 features); loaded by the app for CGPA prediction |
+| ~~`data/**/*.csv`~~ | **removed** — the cleaned cohort lives in Neon `students` (2000 rows) |
+
+### Database (required)
+
+`DATABASE_URL` must be set. Everything (notebook 04, mentor engine, API) reads
+and writes **only** Neon. Tables (auto-created by `--init`):
+
+| Table | Holds |
+|---|---|
+| `students` | the cleaned cohort (2000 rows; full original row in `payload` JSONB) |
+| `mentor_assignments` | one row per student + weak subject/lab (4813 rows) |
+| `teacher_unit_weakness` | manual teacher/unit overrides |
+| `risk_predictions` | per-student risk output (reserved for the risk endpoint) |
+
+### Deploy on Render
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/cybodexx/edu-growth)
+&nbsp;·&nbsp; manual: `https://render.com/deploy?repo=https://github.com/cybodexx/edu-growth`
+
+`render.yaml` is a ready blueprint: it installs `requirements.txt`, runs
+`uvicorn app.main:app --host 0.0.0.0 --port $PORT`, probes `/health`, and reads
+`DATABASE_URL` from the dashboard (set it to your Neon string). No CSV or local
+data file is used at runtime.
+
+```mermaid
+flowchart LR
+    SEED["cleaned cohort<br/>(seeded once)"] --> NEON[("Neon PostgreSQL<br/>students (2000 rows)")]
+    NEON --> ENGINE["mentor engine + API<br/>(reads students)"]
+    ENGINE -->|"assignments"| NEON
+    API["/api/v1/students"] -->|"add / update"| NEON
+    PKL[("artifacts/*.pkl")] --> PRED["CGPA predictor"]
+```
 
 ---
 
-## 📄 License
-Developed by Team Ctrl Freaks for academic purposes. Add a license (for example, MIT) before public release.
+## 10. Configuration (`ml_pipeline/config.py`)
+
+| Constant | Value | Meaning |
+|---|---|---|
+| `SUBJECT_LIST` | coa, maths4, dstl, ds, python, cyber | theory subjects |
+| `LAB_LIST` | ds, python, coa, cyber | labs |
+| `UNITS` | 1–5 | unit numbers |
+| `FAIL_MARKS` | `40.0` | below → weak (mentor needed) |
+| `GOOD_MARKS` | `75.0` | at/above → "topper" band |
+| `INTENSIVE_MARKS` | `20.0` | below → intensive tutoring |
+| `N_CLUSTERS` | `4` | risk levels |
+| `RANDOM_STATE` | `42` | reproducibility |
+| `TEACHER_DATA` | class-section → teacher map | who teaches what |
+| `MENTOR_RANKING` | best→worst teacher per subject/lab | hardcoded mentor preference (no analysis) |
+| `HARDCODED_WEAK_TEACHER_UNITS` | 2 placeholder rows | manual "teacher weak at unit" overrides |
+
+---
+
+## 11. Tech stack
+
+`Python 3.11` · `pandas` · `numpy` · `scikit-learn` (PCA, KMeans, LogisticRegression,
+StandardScaler) · `xgboost` (CGPA + risk) · `matplotlib` / `seaborn` (notebook
+charts) · `psycopg2` (Neon/PostgreSQL) · `FastAPI` + `uvicorn` (API) ·
+`Pydantic` (schemas) · `joblib` (model persistence) · `Jupyter` (notebooks) ·
+`JavaFX` (desktop client).
+
+---
+
+## 12. Developer notes
+
+The mentor engine is documented **line by line** in a local developer guide
+(kept out of version control — see `.gitignore`):
+
+- `tests/MENTOR_GUIDE.md` — every mentor file, the notebook, and how to build the
+  FastAPI mentor endpoint.
+- `BACKEND_SETUP.md` — Neon setup steps.
