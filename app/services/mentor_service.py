@@ -6,8 +6,7 @@ Fitting the engine on the whole cohort takes ~5 s, but answering a single
 student takes milliseconds, so the fitted assigner is cached in-process with
 ``lru_cache`` -- the same pattern as ``prediction_service``.
 
-Data source: Neon PostgreSQL when ``DATABASE_URL`` is configured, otherwise the
-local ``data/processed/edu_growth_cleaned.csv`` fallback.
+Data source: the Neon ``students`` table (see ``ml_pipeline/db_backend.py``).
 """
 from __future__ import annotations
 
@@ -39,6 +38,25 @@ def get_assigner() -> MentorAssigner:
         return build_assigner()
     except Exception as exc:  # noqa: BLE001 - surfaced to the client as HTTP 503
         raise MentorEngineNotAvailableError(f"Could not load mentor engine: {exc}") from exc
+
+
+def refresh_assigner() -> None:
+    """Drops the cached engine so the next call refits on fresh DB data."""
+    get_assigner.cache_clear()
+
+
+def reassign_student(roll_no: str) -> dict | None:
+    """Refits the engine on the current DB and persists this student's mentors.
+
+    Called after a student is added/updated, so a new row gets a mentor too.
+    Best-effort: a failure here never breaks the write that already succeeded.
+    """
+    refresh_assigner()
+    try:
+        return get_assigner().analyze_student(roll_no, persist=True)
+    except Exception as exc:  # noqa: BLE001 - best effort
+        print(f"[mentor] could not assign '{roll_no}': {exc}")
+        return None
 
 
 def get_mentor_analysis(student_id: str) -> dict:

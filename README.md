@@ -22,7 +22,7 @@ a FastAPI service and an ML library.
 | **Mentor assignment** | unit/subject/lab analysis, KMeans risk clustering, hardcoded mentor ranking, peer matching | `notebooks/04_mentor_clustering_model.ipynb`, `ml_pipeline/` |
 | **Risk prediction** | per-subject / per-lab / attendance risk classifiers (LogReg + XGBoost) | `notebooks/05_risk_prediction.ipynb` |
 | **Serving layer** | FastAPI app with CGPA prediction + mentor endpoints | `app/` |
-| **Database layer** | Neon / PostgreSQL adapter (CSV fallback) | `ml_pipeline/db_backend.py` |
+| **Database layer** | Neon / PostgreSQL adapter (**required**; all reads/writes + auto tables) | `ml_pipeline/db_backend.py` |
 | **Desktop UI** | JavaFX client (planned / scaffold) | `frontend_javafx/` |
 
 ---
@@ -31,24 +31,17 @@ a FastAPI service and an ML library.
 
 ```mermaid
 flowchart TD
-    RAW["data/raw/<br/>messy_edu_growth_99_columns.csv"] --> NB1["01 · EDA &amp; Data Cleaning"]
-    NB1 --> PROC["data/processed/<br/>edu_growth_cleaned.csv<br/>46,500 rows × 102 cols"]
+    RAW["raw data<br/>(offline notebooks)"] --> NB1["01 · EDA &amp; Data Cleaning"]
+    NB1 --> PROC["cleaned cohort"]
+    PROC -->|"seeded once"| DB[("Neon students")]
 
-    PROC --> NB2["02 · PCA Dimensionality Reduction"]
-    NB2 --> PCA["data/pca_transformed/<br/>edu_growth_pca.csv"]
+    NB3["03 · CGPA Prediction<br/>XGBoost regressor"] --> M3["artifacts/student_grade_predictor.pkl"]
 
-    PROC --> NB3["03 · CGPA Prediction<br/>XGBoost regressor"]
-    NB3 --> M3["artifacts/<br/>student_grade_predictor.pkl"]
+    DB --> NB4["04 · Mentor Assignment<br/>KMeans + hardcoded mentor ranking"]
+    NB4 --> MA[("Neon mentor_assignments")]
 
-    PROC --> NB4["04 · Mentor Assignment<br/>KMeans + hardcoded mentor ranking"]
-    NB4 --> M4["artifacts/mentor_assign.csv"]
-
-    PROC --> NB5["05 · Risk Prediction<br/>LogReg + XGBoost"]
-    NB5 --> M5["artifacts/risk_output.csv<br/>artifacts/risk_models.pkl"]
-
-    M3 --> API["FastAPI<br/>app/"]
-    M4 --> API
-    M5 --> API
+    DB --> API["FastAPI<br/>app/"]
+    M3 --> API
     API --> UI["JavaFX desktop client"]
 ```
 
@@ -59,10 +52,8 @@ flowchart TD
 ```mermaid
 flowchart LR
     subgraph Stored["Stored data"]
-        RAW["data/raw"]
-        PROC["data/processed"]
-        PCA["data/pca_transformed"]
-        ART["artifacts/<br/>pkl + csv"]
+        NEON["Neon DB<br/>students · mentor_assignments · risk_predictions"]
+        ART["artifacts/<br/>model pkl"]
     end
 
     subgraph Training["notebooks/ (offline training & analysis)"]
@@ -90,15 +81,16 @@ flowchart LR
         DOCS["Swagger /docs"]
     end
 
-    RAW --> N1 --> PROC
-    PROC --> N2 --> PCA
-    PROC --> N3 --> ART
-    PROC --> N4 --> ART
-    PROC --> N5 --> ART
+    N1 --> NEON
+    N2 --> ART
+    N3 --> ART
+    N4 --> NEON
+    N5 --> ART
     ART --> CGP
     CFG --> MA
-    MA --> MEN
+    NEON --> DB
     DB --> MA
+    MA --> MEN
     MAIN --> CGP
     MAIN --> MEN
     CGP --> JFX
@@ -112,11 +104,14 @@ flowchart LR
 
 | # | Notebook | Input | Output |
 |---|---|---|---|
-| 01 | `01_eda_data_cleaning.ipynb` | `data/raw/messy_edu_growth_99_columns.csv` | `data/processed/edu_growth_cleaned.csv` |
-| 02 | `02_pca_dimensionality_reduction.ipynb` | cleaned CSV | `data/pca_transformed/edu_growth_pca.csv` |
-| 03 | `03_cgpa_prediction_model.ipynb` | cleaned CSV | `artifacts/student_grade_predictor.pkl` |
-| 04 | `04_mentor_clustering_model.ipynb` | cleaned CSV | `artifacts/mentor_assign.csv` |
-| 05 | `05_risk_prediction.ipynb` | cleaned CSV | `artifacts/risk_output.csv`, `artifacts/risk_models.pkl` |
+| 01 | `01_eda_data_cleaning.ipynb` | raw CSV (offline) | cleaned CSV (offline) |
+| 02 | `02_pca_dimensionality_reduction.ipynb` | cleaned CSV (offline) | PCA CSV (offline) |
+| 03 | `03_cgpa_prediction_model.ipynb` | cleaned CSV (offline) | `artifacts/student_grade_predictor.pkl` |
+| 04 | `04_mentor_clustering_model.ipynb` | Neon `students` | Neon `mentor_assignments` |
+| 05 | `05_risk_prediction.ipynb` | cleaned CSV (offline) | `artifacts/risk_models.pkl` |
+
+Notebooks 01/02/03/05 are **offline** training/analysis (the running app never
+invokes them). Only notebook 04 touches the DB.
 
 **01 — EDA & Cleaning.** Load raw → check duplicates → column lists → missing
 values → clean text → fix wrong values → detect outliers → fill missing text
@@ -127,7 +122,8 @@ weights, transformed feature matrix saved for downstream use.
 
 **03 — CGPA model.** One-hot encodes `sports_activity_level`, drops outlier /
 grade-missing rows, trains an **XGBoost regressor** (with a RandomForest section),
-evaluates MAE/RMSE/R², and persists a 63-feature predictor bundle.
+evaluates MAE/RMSE/R², and persists the 63-feature predictor bundle to
+`artifacts/`.
 
 **04 — Mentor.** KMeans risk clustering + hardcoded mentor ranking + mentor
 plans (detailed in §5).
@@ -147,7 +143,7 @@ Fully implemented in `ml_pipeline/` and usable at runtime (no notebook needed).
 
 ```mermaid
 flowchart TD
-    S1["1 · Load cohort<br/>Neon if DATABASE_URL set, else CSV"] --> S2
+    S1["1 · Load cohort from Neon<br/>(DATABASE_URL required)"] --> S2
     S2["2 · prepare_features()<br/>marks → unit % · subject % · lab %<br/>weakness counts · progress score"] --> S3
     S3["3 · _train_clusters()<br/>StandardScaler + KMeans(k=4)<br/>Need Help / Fell Down / Normal / Topper"] --> S4
     S4["4 · MENTOR_RANKING (config)<br/>hardcoded best→worst teacher per subject/lab<br/>+ hardcoded weak overrides"] --> S5
@@ -226,7 +222,7 @@ edu-growth/
 ├── ml_pipeline/                 # importable runtime library
 │   ├── config.py                # subjects, thresholds, hardcoded mentor ranking, overrides
 │   ├── mentor_assigner.py       # mentor engine (KMeans + hardcoded ranking + assignment)
-│   ├── db_backend.py            # Neon/PostgreSQL adapter (CSV fallback)
+│   ├── db_backend.py            # Neon/PostgreSQL adapter (auto tables, DB-only)
 │   └── __init__.py              # public exports
 ├── notebooks/                   # offline training & analysis
 │   ├── 01_eda_data_cleaning.ipynb
@@ -237,16 +233,14 @@ edu-growth/
 ├── app/                         # FastAPI service
 │   ├── main.py
 │   ├── api/v1/router.py
-│   ├── api/v1/endpoints/        # cgpa.py + mentor.py (done), risk/velocity/pca (stubs)
+│   ├── api/v1/endpoints/        # cgpa.py + mentor.py + students.py (done), risk/velocity/pca (stubs)
 │   ├── schemas/                 # pydantic models (student, mentor, response)
-│   ├── services/                # prediction_service.py + mentor_service.py
+│   ├── services/                # prediction_service.py + mentor_service.py + student_service.py
 │   └── core/                    # config/database/security (stubs)
-├── data/
-│   ├── raw/                     # messy source CSV
-│   ├── processed/               # cleaned CSV
-│   └── pca_transformed/         # PCA output
-├── artifacts/                   # trained models + generated tables
+├── data/                        # (empty — CSVs removed, data lives in Neon)
+├── artifacts/                   # trained model pkl (CGPA predictor)
 ├── frontend_javafx/             # desktop client (scaffold)
+├── render.yaml                  # Render deploy blueprint (one-click)
 ├── .env.example                 # environment template
 └── README.md
 ```
@@ -256,16 +250,19 @@ edu-growth/
 ## 7. Quickstart
 
 ```bash
-# --- Mentor engine (works immediately, CSV based) -------------------------
-python -c "from ml_pipeline import run_pipeline; run_pipeline()"
-python -c "from ml_pipeline import get_student_report; print(get_student_report('210029038252'))"
-
-# --- (optional) Neon database --------------------------------------------
-copy .env.example .env          # then set DATABASE_URL
+# --- 1) Neon setup (one time) --------------------------------------------
+copy .env.example .env          # then set DATABASE_URL (Neon connection string)
 python -m ml_pipeline.db_backend --init
-python -m ml_pipeline.db_backend --status
+python -m ml_pipeline.db_backend --status      # cleaned cohort already seeded (2000 rows)
 
-# --- FastAPI service ------------------------------------------------------
+# The CGPA model is loaded from artifacts/student_grade_predictor.pkl.
+# To (re)build it, run notebook 03 (offline).
+
+# --- 2) Mentor engine (reads Neon, writes mentor_assignments) -------------
+python -c "from ml_pipeline import run_pipeline; run_pipeline()"
+python -c "from ml_pipeline import get_student_report; print(get_student_report('<roll_no>'))"
+
+# --- 3) FastAPI service ---------------------------------------------------
 uvicorn app.main:app --reload
 # docs: http://127.0.0.1:8000/docs
 ```
@@ -274,23 +271,41 @@ uvicorn app.main:app --reload
 
 ## 8. API
 
-| Method | Path | Status |
+The API is **public** — no token required. Authentication/authorization is
+handled by the separate **MongoDB + JS** auth service (two panels: **teacher**
+and **student**); this FastAPI only serves analytics.
+
+| Method | Path | Description |
 |---|---|---|
-| `GET` | `/health` | ✅ implemented |
-| `POST` | `/api/v1/cgpa/predict` | ✅ implemented (XGBoost CGPA + confidence) |
-| `GET` | `/api/v1/mentor/{student_id}` | ✅ implemented — full mentor analysis JSON (roll no **or** name) |
-| `GET` | `/api/v1/mentor/{student_id}/report` | ✅ implemented — printable text report |
-| `POST` | `/api/v1/mentor/analyze` | ✅ implemented — same as GET, JSON body `{"student_id": "..."}` |
+| `GET` | `/health` | health probe |
+| `POST` | `/api/v1/cgpa/predict` | body `{"roll_no": "..."}` → XGBoost CGPA + confidence |
+| `GET` | `/api/v1/mentor/{student_id}` | full mentor analysis JSON (roll no **or** name) |
+| `GET` | `/api/v1/mentor/{student_id}/report` | printable text report |
+| `POST` | `/api/v1/mentor/analyze` | same as GET, JSON body `{"student_id": "..."}` |
+| `POST` | `/api/v1/students` | add/upsert a student (any columns) → **auto mentor** |
+| `PUT` | `/api/v1/students/{roll_no}` | partial update → **re-assign mentor** |
+| `GET` | `/api/v1/students` | list students (paged: `?limit=&offset=`) |
+| `GET` | `/api/v1/students/{roll_no}` | one student's full row |
+| `DELETE` | `/api/v1/students/{roll_no}` | delete a student + all derived rows |
 | — | `/api/v1/pca/...`, `/api/v1/risk/...`, `/api/v1/velocity/...` | ⬜ stubs |
+
+### Data source
+
+The engine reads **only** `DATABASE_URL` (Neon). The cleaned cohort was seeded
+**once** into the `students` table (2000 rows); there is **no CSV dependency** in
+the code or at runtime. New students are added/updated straight through the
+`/api/v1/students` endpoints and immediately get a mentor. Mentor choices come
+from the hardcoded rankings in `ml_pipeline/config.py`. The trained CGPA model is
+loaded from `artifacts/student_grade_predictor.pkl`. See
+`ml_pipeline/db_backend.py`.
 
 ```bash
 uvicorn app.main:app --reload
-# full analysis
+# CGPA: send just the roll number
+curl -X POST http://127.0.0.1:8000/api/v1/cgpa/predict -H "Content-Type: application/json" -d "{\"roll_no\":\"210029038252\"}"
 curl http://127.0.0.1:8000/api/v1/mentor/210029038252
-# printable report
 curl http://127.0.0.1:8000/api/v1/mentor/210029038252/report
-# OpenAPI docs
-#   http://127.0.0.1:8000/docs
+# OpenAPI docs: http://127.0.0.1:8000/docs
 ```
 
 The mentor endpoints wrap the same engine used by notebook 04
@@ -304,25 +319,35 @@ Unknown roll numbers return **404**; if the engine cannot be fitted, **503**.
 
 | Path | Description |
 |---|---|
-| `data/raw/messy_edu_growth_99_columns.csv` | raw, dirty source data |
-| `data/processed/edu_growth_cleaned.csv` | cleaned cohort (46,500 × 102) |
-| `data/pca_transformed/edu_growth_pca.csv` | PCA-reduced features |
-| `artifacts/student_grade_predictor.pkl` | CGPA model bundle (63 features) |
-| `artifacts/mentor_assign.csv` | one row per student + subject/lab needing a mentor |
-| `artifacts/risk_output.csv` | per-student risk probabilities (notebook 05) |
-| `artifacts/risk_models.pkl` | risk classifier bundle (notebook 05) |
+| `artifacts/student_grade_predictor.pkl` | CGPA model bundle (63 features); loaded by the app for CGPA prediction |
+| ~~`data/**/*.csv`~~ | **removed** — the cleaned cohort lives in Neon `students` (2000 rows) |
 
-### Database (optional)
+### Database (required)
 
-If `DATABASE_URL` is set, the mentor layer reads/writes **Neon PostgreSQL**;
-otherwise it transparently uses CSV. Tables: `students`, `mentor_assignments`,
-`teacher_unit_weakness`.
+`DATABASE_URL` must be set. Everything (notebook 04, mentor engine, API) reads
+and writes **only** Neon. Tables (auto-created by `--init`):
+
+| Table | Holds |
+|---|---|
+| `students` | the cleaned cohort (2000 rows; full original row in `payload` JSONB) |
+| `mentor_assignments` | one row per student + weak subject/lab (4813 rows) |
+| `teacher_unit_weakness` | manual teacher/unit overrides |
+| `risk_predictions` | per-student risk output (reserved for the risk endpoint) |
+
+### Deploy on Render
+
+`render.yaml` is a ready blueprint: it installs `requirements.txt`, runs
+`uvicorn app.main:app --host 0.0.0.0 --port $PORT`, probes `/health`, and reads
+`DATABASE_URL` from the dashboard (set it to your Neon string). No CSV or local
+data file is used at runtime.
 
 ```mermaid
 flowchart LR
-    ENV[".env<br/>DATABASE_URL"] --> BE["db_backend.backend_enabled()"]
-    BE -- true --> NEON["Neon PostgreSQL<br/>read students · write assignments"]
-    BE -- false --> CSV["CSV fallback<br/>edu_growth_cleaned.csv · mentor_assign.csv"]
+    SEED["cleaned cohort<br/>(seeded once)"] --> NEON[("Neon PostgreSQL<br/>students (2000 rows)")]
+    NEON --> ENGINE["mentor engine + API<br/>(reads students)"]
+    ENGINE -->|"assignments"| NEON
+    API["/api/v1/students"] -->|"add / update"| NEON
+    PKL[("artifacts/*.pkl")] --> PRED["CGPA predictor"]
 ```
 
 ---

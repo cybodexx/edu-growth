@@ -8,7 +8,6 @@ Sections marked  TEMPORARY / HARDCODED  are placeholders. They will be replaced
 by real values pulled from the Neon database once the backend team fills in
 ``ml_pipeline/db_backend.py`` (DATABASE_URL + tables).
 """
-from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # Subjects & labs
@@ -56,14 +55,6 @@ KMEANS_FEATURES = [
 ]
 RISK_ORDER = ["Need Help", "Fell Down", "Normal", "Topper"]
 PRIORITY_MAPPING = {"Need Help": 1, "Fell Down": 2, "Normal": 3, "Topper": 4}
-
-# ---------------------------------------------------------------------------
-# Paths (absolute, resolved from the repo root so notebooks/API agree)
-# ---------------------------------------------------------------------------
-ROOT_DIR = Path(__file__).resolve().parents[1]
-DEFAULT_DATA_PATH = ROOT_DIR / "data/processed/edu_growth_cleaned.csv"
-DEFAULT_ARTIFACTS_DIR = ROOT_DIR / "artifacts"
-ASSIGNMENTS_CSV_PATH = DEFAULT_ARTIFACTS_DIR / "mentor_assign.csv"
 
 # ---------------------------------------------------------------------------
 # Class-section -> subject/lab teacher mapping
@@ -149,7 +140,6 @@ HARDCODED_WEAK_TEACHER_UNITS = [
 # ---------------------------------------------------------------------------
 # Neon / PostgreSQL backend (fill in .env).
 # ---------------------------------------------------------------------------
-# The adapter is isolated in ml_pipeline/db_backend.py so the backend team only
-# has to complete that one file. If DATABASE_URL is missing the pipeline
-# transparently falls back to DEFAULT_DATA_PATH (CSV).
+# All database access is isolated in ml_pipeline/db_backend.py. DATABASE_URL is
+# required: every part of the project reads and writes only the database.
 DB_ENV_VAR = "DATABASE_URL"

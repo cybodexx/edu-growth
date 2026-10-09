@@ -3,7 +3,7 @@ Mentor assignment engine.
 
 One class, :class:`MentorAssigner`, owns the whole mentor flow:
 
-    raw student row (CSV *or* Neon)
+    raw student row (Neon)
         -> feature engineering (subject % / unit % / lab %)
         -> KMeans risk clustering
         -> hardcoded mentor preference (per subject / lab)
@@ -17,11 +17,9 @@ Public entry points
 * ``assigner.analyze_student("210029...")``    full analysis for one roll-no/name
 * ``assigner.assign_all(df)``                  flat mentor-assignment table
 * ``assigner.ensure_assignments(df)``         create only the still-missing rows
-* ``run_pipeline()``                           end-to-end CSV run (artifacts)
+* ``run_pipeline()``                           end-to-end DB run (assignments)
 """
 from __future__ import annotations
-
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -44,9 +42,6 @@ from .config import (
     TEACHER_DATA,
     MENTOR_RANKING,
     HARDCODED_WEAK_TEACHER_UNITS,
-    DEFAULT_DATA_PATH,
-    DEFAULT_ARTIFACTS_DIR,
-    ASSIGNMENTS_CSV_PATH,
 )
 from . import db_backend
 
@@ -144,29 +139,13 @@ class MentorAssigner:
     # ------------------------------------------------------------------
     # Data loading
     # ------------------------------------------------------------------
-    def load_data(self, data_path=None) -> pd.DataFrame:
-        """Loads the cohort from CSV (offline / fallback path)."""
-        path = Path(data_path or DEFAULT_DATA_PATH)
-        df = pd.read_csv(path)
-        self.data = df
-        return df
-
-    def load_from_backend(self) -> pd.DataFrame:
-        """Loads the cohort from the Neon backend."""
+    def load(self) -> pd.DataFrame:
+        """Loads the whole cohort from the Neon database."""
         df = db_backend.fetch_students()
         if df.empty:
-            raise RuntimeError("Neon backend returned no students. Import the dataset first.")
+            raise RuntimeError("No students in the database. Run the importer first.")
         self.data = df
         return df
-
-    def load(self, data_path=None, prefer_backend=True) -> pd.DataFrame:
-        """Loads from Neon when configured, otherwise falls back to CSV."""
-        if prefer_backend and db_backend.backend_enabled():
-            try:
-                return self.load_from_backend()
-            except Exception as exc:  # pragma: no cover - backend optional
-                print(f"[mentor] backend load failed ({exc}); falling back to CSV.")
-        return self.load_data(data_path)
 
     # ------------------------------------------------------------------
     # Feature engineering
@@ -610,21 +589,13 @@ class MentorAssigner:
 
     def _resolve_raw_student(self, identifier):
         ident = str(identifier).strip()
-        if db_backend.backend_enabled():
-            try:
-                student = db_backend.fetch_student(ident)
-                if student:
-                    return student
-            except Exception as exc:  # pragma: no cover - backend optional
-                print(f"[mentor] backend lookup failed ({exc}); using loaded data.")
-        if self.data is not None:
-            match = self.data[
-                (self.data["roll_no"].astype(str) == ident)
-                | (self.data["full_name"].astype(str).str.lower() == ident.lower())
-            ]
-            if not match.empty:
-                return match.iloc[0].to_dict()
-        raise LookupError(f"No student found for '{identifier}'.")
+        match = self.data[
+            (self.data["roll_no"].astype(str) == ident)
+            | (self.data["full_name"].astype(str).str.lower() == ident.lower())
+        ]
+        if match.empty:
+            raise LookupError(f"No student found for '{identifier}'.")
+        return match.iloc[0].to_dict()
 
     def format_report(self, analysis: dict) -> str:
         """Human-readable text report (same style as the notebook output)."""
@@ -706,7 +677,7 @@ class MentorAssigner:
             })
         return records
 
-    def assign_all(self, df=None, output_path=None, persist=False) -> pd.DataFrame:
+    def assign_all(self, df=None, persist=True) -> pd.DataFrame:
         """Builds the flat mentor-assignment table for the whole cohort."""
         if not self.is_fitted:
             df = df if df is not None else self.load()
@@ -726,33 +697,15 @@ class MentorAssigner:
                 ["priority_rank", "subject_score_pct"], ascending=[True, True]
             ).reset_index(drop=True)
 
-        if output_path:
-            output_path = Path(output_path)
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            assign_df.to_csv(output_path, index=False)
-            print(f"Exported {len(assign_df)} assignments to {output_path}")
-
-        if persist:
+        if persist and not assign_df.empty:
             self._persist_records(assign_df.to_dict("records"))
         return assign_df
-
-    # backward-compatible alias
-    def generate_assignments_csv(self, df=None, output_path=None):
-        return self.assign_all(df=df, output_path=output_path)
 
     def _persist_records(self, records):
         if not records:
             return
-        if db_backend.backend_enabled():
-            try:
-                n = db_backend.save_mentor_assignments(pd.DataFrame(records))
-                print(f"[mentor] persisted {n} assignment rows to Neon.")
-                return
-            except Exception as exc:  # pragma: no cover - backend optional
-                print(f"[mentor] could not persist to Neon ({exc}); writing CSV instead.")
-        df = pd.DataFrame(records)
-        ASSIGNMENTS_CSV_PATH.parent.mkdir(parents=True, exist_ok=True)
-        df.to_csv(ASSIGNMENTS_CSV_PATH, index=False)
+        n = db_backend.save_mentor_assignments(pd.DataFrame(records))
+        print(f"[mentor] saved {n} assignment rows to Neon.")
 
     def ensure_assignments(self, df=None, persist=True) -> pd.DataFrame:
         """Creates assignments for students who need one but don't have one yet.
@@ -767,12 +720,7 @@ class MentorAssigner:
         prepared = self.prepare_features(df if df is not None else self.data)
         prepared = self._predict_clusters(prepared)
 
-        existing = set()
-        if db_backend.backend_enabled():
-            try:
-                existing = db_backend.fetch_assignment_keys()
-            except Exception as exc:  # pragma: no cover - backend optional
-                print(f"[mentor] could not read existing assignments ({exc}).")
+        existing = db_backend.fetch_assignment_keys()
 
         peer_state = {}
         records = []
@@ -796,49 +744,39 @@ class MentorAssigner:
     # ------------------------------------------------------------------
 
 
-def build_assigner(data_path=None, prefer_backend=True) -> MentorAssigner:
-    """Loads the cohort (Neon -> CSV) and fits the engine.
+def build_assigner() -> MentorAssigner:
+    """Loads the cohort from Neon and fits the engine.
 
     No pickle/model file is used: fitting on the full dataset takes a few
     seconds, so we just rebuild it on demand.
     """
     assigner = MentorAssigner()
-    assigner.load(data_path, prefer_backend=prefer_backend)
+    assigner.load()
     assigner.fit(assigner.data)
     return assigner
 
 
-def get_student_mentor(identifier, data_path=None) -> dict:
-    """Convenience entry point for the future API.
+def get_student_mentor(identifier) -> dict:
+    """Full analysis dict for one roll number or name.
 
-    ``get_student_mentor("210029027561")`` or ``get_student_mentor("Kavya Verma")``
-    returns the full analysis dict produced by :meth:`MentorAssigner.analyze_student`.
+    ``get_student_mentor("210029027561")`` or ``get_student_mentor("Kavya Verma")``.
     """
-    return build_assigner(data_path).analyze_student(identifier)
+    return build_assigner().analyze_student(identifier)
 
 
-def get_student_report(identifier, data_path=None) -> str:
+def get_student_report(identifier) -> str:
     """Same as :func:`get_student_mentor` but returns the printable text report."""
-    return build_assigner(data_path).analyze_student(identifier)["report_text"]
+    return build_assigner().analyze_student(identifier)["report_text"]
 
 
-def run_pipeline(data_path=DEFAULT_DATA_PATH, artifacts_dir=DEFAULT_ARTIFACTS_DIR, persist_db=False):
-    """End-to-end CSV run: fit + export mentor assignments."""
-    artifacts_dir = Path(artifacts_dir)
+def run_pipeline() -> MentorAssigner:
+    """End-to-end run: fit from Neon and write the mentor assignments back to Neon."""
     print("=" * 60)
     print("Starting Mentor Pipeline...")
-    assigner = MentorAssigner()
-    df = assigner.load_data(data_path)
-    print(f"Dataset loaded: {len(df)} students, {df.shape[1]} columns")
-    assigner.fit(df)
-
-    artifacts_dir.mkdir(parents=True, exist_ok=True)
-    assigner.assign_all(df, output_path=artifacts_dir / "mentor_assign.csv", persist=persist_db)
-
-    sample = df.iloc[0]["roll_no"]
-    analysis = assigner.analyze_student(sample)
-    print(f"Sample analysis -> {analysis['roll_no']} | risk={analysis['risk_level']} "
-          f"| interventions={len(analysis['recommendations'])}")
+    db_backend.ensure_schema()
+    assigner = build_assigner()
+    print(f"Dataset loaded: {len(assigner.data)} students")
+    assigner.assign_all(persist=True)
     print("=" * 60)
     return assigner
 
