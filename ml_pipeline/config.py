@@ -64,7 +64,6 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_DATA_PATH = ROOT_DIR / "data/processed/edu_growth_cleaned.csv"
 DEFAULT_ARTIFACTS_DIR = ROOT_DIR / "artifacts"
 ASSIGNMENTS_CSV_PATH = DEFAULT_ARTIFACTS_DIR / "mentor_assign.csv"
-TEACHER_RANKING_CSV_PATH = DEFAULT_ARTIFACTS_DIR / "teacher_ranking.csv"
 
 # ---------------------------------------------------------------------------
 # Class-section -> subject/lab teacher mapping
@@ -103,11 +102,34 @@ TEACHER_DATA = {
 }
 
 # ---------------------------------------------------------------------------
+# HARDCODED mentor preference (best teacher -> weakest).
+# ---------------------------------------------------------------------------
+# No teacher-efficacy analysis / ranking is computed anywhere. The HOD /
+# teacher-analysis panel is NOT built. The engine simply recommends the first
+# teacher in this list who is not already the student's current teacher.
+#
+# Keys:  theory subject  -> "coa", "maths4", "dstl", "ds", "python", "cyber"
+#        lab              -> "lab:<lab>"  (e.g. "lab:ds")
+# Values: teacher names, best -> worst. Edit by hand as needed.
+MENTOR_RANKING = {
+    "coa":    ["Dr. Ananya", "Dr. Sharma", "Prof. Verma"],
+    "maths4": ["Prof. Sneha", "Dr. Rajesh", "Dr. Mehta"],
+    "dstl":   ["Prof. Khan", "Dr. Iyer", "Prof. Gupta"],
+    "ds":     ["Dr. Kapoor", "Dr. Singhal", "Prof. Mishra"],
+    "python": ["Dr. Nair", "Prof. Bansal", "Prof. Joshi"],
+    "cyber":  ["Dr. Malhotra", "Prof. Tiwari", "Dr. Saxena"],
+    "lab:ds":     ["Dr. Kapoor", "Dr. Singhal", "Prof. Mishra"],
+    "lab:python": ["Dr. Nair", "Prof. Bansal", "Prof. Joshi"],
+    "lab:coa":    ["Prof. Verma", "Dr. Sharma", "Dr. Ananya"],
+    "lab:cyber":  ["Dr. Saxena", "Prof. Tiwari", "Dr. Malhotra"],
+}
+
+# ---------------------------------------------------------------------------
 # TEMPORARY: hardcoded "this teacher's this unit is weak" overrides.
 # ---------------------------------------------------------------------------
-# The data-derived teacher ranking (computed inside MentorAssigner) already
-# flags weak teacher+unit combinations. The entries below are an *extra*
-# manual override layer used while the Neon backend is not wired up.
+# No teacher-efficacy ranking is computed. These rows are a manual override
+# layer: a teacher listed here is pushed to the bottom of the recommendation
+# queue for that unit (see MentorAssigner._is_weak_override / pick_mentor).
 #
 # TODO(backend): move these rows to the ``teacher_unit_weakness`` table in Neon
 # and load them with ``db_backend.load_teacher_unit_weakness()``. Until then the
@@ -123,11 +145,6 @@ HARDCODED_WEAK_TEACHER_UNITS = [
     # {"subject": "lab:ds", "unit_or_component": "lab overall", "teacher_name": "Dr. Kapoor",
     #  "note": "PLACEHOLDER: low lab execution scores"},
 ]
-
-# Additional penalty applied to a teacher's score for an overridden unit.
-# A hardcoded-weak teacher is pushed to the bottom of the recommendation queue
-# unless no alternative exists.
-HARDCODED_WEAK_PENALTY = 5.0
 
 # ---------------------------------------------------------------------------
 # Neon / PostgreSQL backend (fill in .env).

@@ -10,8 +10,7 @@ fill in ONE file:
     2. (optional) run this file directly to create the tables:
            python -m ml_pipeline.db_backend --init
     3. Import the students into the ``students`` table and the ML team's
-       ``mentor_assign.csv`` / ``teacher_ranking.csv`` will be written back
-       automatically.
+       ``mentor_assign.csv`` will be written back automatically.
 
 If ``DATABASE_URL`` is not configured, every function raises
 ``BackendNotConfigured`` and the analysis pipeline transparently falls back to
@@ -107,22 +106,6 @@ CREATE TABLE IF NOT EXISTS mentor_assignments (
     attendance_pct      DOUBLE PRECISION,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (roll_no, subject_type, subject_name)
-);
-
-CREATE TABLE IF NOT EXISTS teacher_ranking (
-    id                  BIGSERIAL PRIMARY KEY,
-    category            TEXT,          -- 'theory' | 'lab'
-    subject             TEXT,
-    unit_or_component   TEXT,          -- 'unit 1' .. 'unit 5' | 'overall' | 'lab overall'
-    teacher_name        TEXT,
-    teacher_score       DOUBLE PRECISION,
-    total_students      INTEGER,
-    pass_rate_pct       DOUBLE PRECISION,
-    topper_rate_pct     DOUBLE PRECISION,
-    sections_taught     TEXT,
-    rank                INTEGER,
-    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (category, subject, unit_or_component, teacher_name)
 );
 
 CREATE TABLE IF NOT EXISTS teacher_unit_weakness (
@@ -280,30 +263,6 @@ def save_mentor_assignments(df: pd.DataFrame) -> int:
         ON CONFLICT (roll_no, subject_type, subject_name) DO UPDATE SET
             {", ".join(f"{c} = EXCLUDED.{c}" for c in update_cols)},
             created_at = now();
-    """
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            execute_values(cur, sql, records)
-        conn.commit()
-    return len(records)
-
-
-def save_teacher_ranking(df: pd.DataFrame) -> int:
-    """Upserts the data-derived teacher ranking table."""
-    if df is None or df.empty:
-        return 0
-    columns = [
-        "category", "subject", "unit_or_component", "teacher_name", "teacher_score",
-        "total_students", "pass_rate_pct", "topper_rate_pct", "sections_taught", "rank",
-    ]
-    records = _records_from_df(df, columns)
-    update_cols = [c for c in columns if c not in ("category", "subject", "unit_or_component", "teacher_name")]
-    sql = f"""
-        INSERT INTO teacher_ranking ({", ".join(columns)})
-        VALUES %s
-        ON CONFLICT (category, subject, unit_or_component, teacher_name) DO UPDATE SET
-            {", ".join(f"{c} = EXCLUDED.{c}" for c in update_cols)},
-            updated_at = now();
     """
     with get_connection() as conn:
         with conn.cursor() as cur:

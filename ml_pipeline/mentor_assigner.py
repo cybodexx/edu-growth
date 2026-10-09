@@ -6,7 +6,7 @@ One class, :class:`MentorAssigner`, owns the whole mentor flow:
     raw student row (CSV *or* Neon)
         -> feature engineering (subject % / unit % / lab %)
         -> KMeans risk clustering
-        -> teacher efficacy ranking (per subject, per unit, per lab)
+        -> hardcoded mentor preference (per subject / lab)
         -> peer-mentor lookup
         -> unit-wise, subject-wise mentor assignment
         -> detailed analysis dict + flat assignment rows
@@ -36,20 +36,17 @@ from .config import (
     SUBJECT_LABELS,
     LAB_LABELS,
     FAIL_MARKS,
-    GOOD_MARKS,
     INTENSIVE_MARKS,
     N_CLUSTERS,
     RANDOM_STATE,
     KMEANS_FEATURES,
-    RISK_ORDER,
     PRIORITY_MAPPING,
     TEACHER_DATA,
+    MENTOR_RANKING,
     HARDCODED_WEAK_TEACHER_UNITS,
-    HARDCODED_WEAK_PENALTY,
     DEFAULT_DATA_PATH,
     DEFAULT_ARTIFACTS_DIR,
     ASSIGNMENTS_CSV_PATH,
-    TEACHER_RANKING_CSV_PATH,
 )
 from . import db_backend
 
@@ -64,7 +61,7 @@ def _round(value, digits=2):
 
 
 class MentorAssigner:
-    """End-to-end mentor + teacher-efficacy analysis engine."""
+    """End-to-end mentor analysis + assignment engine."""
 
     def __init__(self):
         self.scaler = StandardScaler()
@@ -73,8 +70,21 @@ class MentorAssigner:
         self.cluster_profiles: dict[int, dict] = {}
         self.priority_mapping = dict(PRIORITY_MAPPING)
 
-        self.teacher_ranking_df = pd.DataFrame()
+        # Hardcoded mentor preference expanded to (category, subject, unit)
+        # keys. No teacher-efficacy computation happens here.
         self.ranked_dict: dict[tuple, list[tuple]] = {}
+        for _key, _teachers in MENTOR_RANKING.items():
+            if _key.startswith("lab:"):
+                _cat, _sub = "lab", _key[4:]
+                _labels = ["lab overall"]
+            else:
+                _cat, _sub = "theory", _key
+                _labels = [f"unit {u}" for u in UNITS] + ["overall"]
+            for _label in _labels:
+                self.ranked_dict[(_cat, _sub, _label)] = [
+                    (t, round(9.0 - i, 2)) for i, t in enumerate(_teachers)
+                ]
+
         self.peer_dict: dict[tuple, list[dict]] = {}
 
         self.max_marks: dict[str, float] = {}
@@ -336,72 +346,6 @@ class MentorAssigner:
         return pd.DataFrame(rows)
 
     # ------------------------------------------------------------------
-    # Teacher efficacy ranking
-    # ------------------------------------------------------------------
-    def _teacher_score(self, scores: pd.Series) -> tuple[float, int, int, int]:
-        total = len(scores)
-        fail_cnt = int((scores < FAIL_MARKS).sum())
-        topper_cnt = int((scores >= GOOD_MARKS).sum())
-        score = 5.0 + 5.0 * (topper_cnt / total) - 5.0 * (fail_cnt / total)
-        return round(max(1.0, min(10.0, score)), 2), total, fail_cnt, topper_cnt
-
-    def _ranking_row(self, category, subject, unit_label, teacher, scores):
-        score, total, fail_cnt, topper_cnt = self._teacher_score(scores)
-        hardcoded = self._is_weak_override(subject, unit_label, teacher)
-        if hardcoded:
-            score = round(max(1.0, score - HARDCODED_WEAK_PENALTY), 2)
-        return {
-            "category": category,
-            "subject": subject,
-            "unit_or_component": unit_label,
-            "teacher_name": teacher,
-            "teacher_score": score,
-            "total_students": total,
-            "pass_rate_pct": round((1.0 - fail_cnt / total) * 100.0, 1),
-            "topper_rate_pct": round((topper_cnt / total) * 100.0, 1),
-            "sections_taught": ", ".join(TEACHER_DATA.get(subject, {}).get(teacher, [])) or "-",
-            "hardcoded_weak": bool(hardcoded),
-        }
-
-    def _build_teacher_ranking(self, df):
-        rows = []
-        # theory: each unit + subject overall
-        for s in SUBJECT_LIST:
-            tcol = f"{s}_teacher"
-            for teacher in df[tcol].dropna().unique():
-                if teacher == "Unknown":
-                    continue
-                subset = df[df[tcol] == teacher]
-                for u in UNITS:
-                    rows.append(self._ranking_row("theory", s, f"unit {u}", teacher, subset[f"{s}_unit_{u}_pct"]))
-                rows.append(self._ranking_row("theory", s, "overall", teacher, subset[f"{s}_pct"]))
-
-        # labs: overall
-        for l in LAB_LIST:
-            tcol = f"lab_{l}_teacher"
-            for teacher in df[tcol].dropna().unique():
-                if teacher == "Unknown":
-                    continue
-                subset = df[df[tcol] == teacher]
-                rows.append(self._ranking_row("lab", l, "lab overall", teacher, subset[f"lab_{l}_pct"]))
-
-        ranking = pd.DataFrame(rows)
-        if not ranking.empty:
-            ranking["rank"] = (
-                ranking.groupby(["category", "subject", "unit_or_component"])["teacher_score"]
-                .rank(ascending=False, method="min")
-                .astype(int)
-            )
-            ranking = ranking.sort_values(["category", "subject", "unit_or_component", "rank"]).reset_index(drop=True)
-        self.teacher_ranking_df = ranking
-
-        self.ranked_dict = {}
-        for _, row in ranking.iterrows():
-            key = (row["category"], row["subject"], row["unit_or_component"])
-            self.ranked_dict.setdefault(key, []).append((row["teacher_name"], float(row["teacher_score"])))
-        return ranking
-
-    # ------------------------------------------------------------------
     # Peer mentors
     # ------------------------------------------------------------------
     def _build_peer_map(self, df):
@@ -432,7 +376,6 @@ class MentorAssigner:
         self._calculate_max_marks(df)
         prepared = self.prepare_features(df)
         clustered = self._train_clusters(prepared)
-        self._build_teacher_ranking(clustered)
         self._build_peer_map(clustered)
         self.is_fitted = True
         return self
@@ -450,7 +393,7 @@ class MentorAssigner:
             if self._is_weak_override(subject, unit_label, teacher):
                 fallback = fallback or (teacher, score)
                 continue
-            return {"name": teacher, "expertise_unit": unit_label, "rating": round(score, 2), "source": "teacher_ranking"}
+            return {"name": teacher, "expertise_unit": unit_label, "rating": round(score, 2), "source": "hardcoded_ranking"}
         if fallback:
             return {"name": fallback[0], "expertise_unit": unit_label, "rating": round(fallback[1], 2), "source": "fallback_weak_teacher"}
         if candidates:
@@ -880,7 +823,7 @@ def get_student_report(identifier, data_path=None) -> str:
 
 
 def run_pipeline(data_path=DEFAULT_DATA_PATH, artifacts_dir=DEFAULT_ARTIFACTS_DIR, persist_db=False):
-    """End-to-end CSV run: fit, export ranking + assignments."""
+    """End-to-end CSV run: fit + export mentor assignments."""
     artifacts_dir = Path(artifacts_dir)
     print("=" * 60)
     print("Starting Mentor Pipeline...")
@@ -890,15 +833,7 @@ def run_pipeline(data_path=DEFAULT_DATA_PATH, artifacts_dir=DEFAULT_ARTIFACTS_DI
     assigner.fit(df)
 
     artifacts_dir.mkdir(parents=True, exist_ok=True)
-    ranking_path = artifacts_dir / "teacher_ranking.csv"
-    assigner.teacher_ranking_df.to_csv(ranking_path, index=False)
-    print(f"Teacher ranking exported: {ranking_path} ({len(assigner.teacher_ranking_df)} rows)")
-
     assigner.assign_all(df, output_path=artifacts_dir / "mentor_assign.csv", persist=persist_db)
-
-    if persist_db and db_backend.backend_enabled():
-        db_backend.ensure_schema()
-        db_backend.save_teacher_ranking(assigner.teacher_ranking_df)
 
     sample = df.iloc[0]["roll_no"]
     analysis = assigner.analyze_student(sample)
