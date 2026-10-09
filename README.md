@@ -10,6 +10,12 @@ a FastAPI service and an ML library.
 - **Serve →** FastAPI endpoints (`/api/v1/...`) for predictions and mentor plans.
 - **No fragile model files for mentors:** the mentor engine re-fits in ~5 s.
 
+<p align="center">
+  <a href="https://render.com/deploy?repo=https://github.com/cybodexx/edu-growth">
+    <img src="https://render.com/images/deploy-to-render-button.svg" alt="Deploy to Render" height="40">
+  </a>
+</p>
+
 ---
 
 ## 1. What the project contains
@@ -267,6 +273,18 @@ uvicorn app.main:app --reload
 # docs: http://127.0.0.1:8000/docs
 ```
 
+### One-click deploy on Render
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/cybodexx/edu-growth)
+
+1. Click the **Deploy to Render** button (repo `cybodexx/edu-growth`, branch `PRANAV-PRAJAPATI`).
+2. Render reads `render.yaml` and creates the Web Service automatically (install → `uvicorn app.main:app --host 0.0.0.0 --port $PORT` → `/health` probe).
+3. Set the env var **`DATABASE_URL`** to your Neon connection string.
+4. **Apply / Deploy** → live in ~2–3 minutes. Check `/health` and `/docs`.
+
+> The repo's branch is `PRANAV-PRAJAPATI` (not `main`) — if Render offers a branch
+> selector during the flow, pick that branch.
+
 ---
 
 ## 8. API
@@ -335,6 +353,9 @@ and writes **only** Neon. Tables (auto-created by `--init`):
 | `risk_predictions` | per-student risk output (reserved for the risk endpoint) |
 
 ### Deploy on Render
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/cybodexx/edu-growth)
+&nbsp;·&nbsp; manual: `https://render.com/deploy?repo=https://github.com/cybodexx/edu-growth`
 
 `render.yaml` is a ready blueprint: it installs `requirements.txt`, runs
 `uvicorn app.main:app --host 0.0.0.0 --port $PORT`, probes `/health`, and reads
