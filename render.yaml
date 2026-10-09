@@ -1,12 +1,28 @@
 # Render Blueprint -- one-click deploy of the FastAPI service.
 # The app is 100% database-backed (Neon PostgreSQL); no CSV / local data files.
+# NOTE: Render's service settings come from the Dashboard/Blueprint sync;
+# keep this file in sync with what you set on the dashboard.
 services:
   - type: web
     name: edu-growth-api
     runtime: python
     plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    pythonVersion: "3.11.9"
+    buildCommand: |
+      set -x
+      echo "=== build diagnostic start ==="
+      python --version
+      which python pip poetry || true
+      if [ -f pyproject.toml ]; then
+        poetry config virtualenvs.in-project true
+        poetry install --no-interaction
+        poetry run python -c "import uvicorn, fastapi, pandas, psycopg2; print('POETRY DEPS OK, uvicorn=' + uvicorn.__version__)"
+      else
+        python -m pip install --no-cache-dir -r requirements.txt
+      fi
+      python -m pip freeze | head -50
+      echo "=== build diagnostic end ==="
+    startCommand: python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
       - key: DATABASE_URL
