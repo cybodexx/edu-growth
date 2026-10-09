@@ -29,18 +29,13 @@ def get_student_by_roll_no(roll_no: int):
         return None
     return student.iloc[0].to_dict()
 
-@app.post("/predict-risk",response_model=StudentRiskResponse)
+@app.post("/predict-risk", response_model=StudentRiskResponse)
 def predict_risk(data: StudentRiskRequest):
     roll_no = data.roll_no
+    student_df = df[df["roll_no"] == roll_no]
+    if student_df.empty:raise HTTPException( status_code=404, detail="Student not found")
 
-    student = get_student_by_roll_no(roll_no)
-
-    if student is None:
-        raise HTTPException(status_code=404,detail=f"Student with roll_no {roll_no} not found")
-    
-    student_df = pd.DataFrame([student])
     predictions = []
-
     for subject, model_data in risk_models:
         model = model_data["model"]
         features = model_data["features"]
@@ -49,15 +44,7 @@ def predict_risk(data: StudentRiskRequest):
         X = student_df[features]
         probability = model.predict_proba(X)[0, 1]
         prediction = int(probability >= threshold)
-        predictions.append(SubjectRisk(
-                subject=subject,
-                prediction=prediction,
-                status=(
-                    "At Risk"
-                    if prediction == 1
-                    else "Safe"
-                )
-            )
-        )
+
+        predictions.append(SubjectRisk(subject=subject,prediction=prediction,status="At Risk" if prediction == 1 else "Safe "))
 
     return StudentRiskResponse(roll_no=roll_no,predictions=predictions)
