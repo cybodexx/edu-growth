@@ -239,9 +239,9 @@ edu-growth/
 ├── app/                         # FastAPI service
 │   ├── main.py
 │   ├── api/v1/router.py
-│   ├── api/v1/endpoints/        # cgpa.py + mentor.py + students.py (done), risk/velocity/pca (stubs)
-│   ├── schemas/                 # pydantic models (student, mentor, response)
-│   ├── services/                # prediction_service.py + mentor_service.py + student_service.py
+│   ├── api/v1/endpoints/        # cgpa + risk + mentor + students (done), velocity/pca (stubs)
+│   ├── schemas/                 # pydantic models (student, mentor, risk, response)
+│   ├── services/                # prediction_service + risk_service + mentor_service + student_service
 │   └── core/                    # config/database/security (stubs)
 ├── data/                        # (empty — CSVs removed, data lives in Neon)
 ├── artifacts/                   # trained model pkl (CGPA predictor)
@@ -300,12 +300,14 @@ and **student**); this FastAPI only serves analytics.
 | `GET` | `/api/v1/mentor/{student_id}` | full mentor analysis JSON (roll no **or** name) |
 | `GET` | `/api/v1/mentor/{student_id}/report` | printable text report |
 | `POST` | `/api/v1/mentor/analyze` | same as GET, JSON body `{"student_id": "..."}` |
+| `GET` | `/api/v1/risk/{roll_no}` | per-subject risk flags (6 XGBoost classifiers) |
+| `POST` | `/api/v1/risk/predict` | body `{"roll_no": "..."}` → same as GET |
 | `POST` | `/api/v1/students` | add/upsert a student (any columns) → **auto mentor** |
 | `PUT` | `/api/v1/students/{roll_no}` | partial update → **re-assign mentor** |
 | `GET` | `/api/v1/students` | list students (paged: `?limit=&offset=`) |
 | `GET` | `/api/v1/students/{roll_no}` | one student's full row |
 | `DELETE` | `/api/v1/students/{roll_no}` | delete a student + all derived rows |
-| — | `/api/v1/pca/...`, `/api/v1/risk/...`, `/api/v1/velocity/...` | ⬜ stubs |
+| — | `/api/v1/pca/...`, `/api/v1/velocity/...` | ⬜ stubs |
 
 ### Data source
 
@@ -350,7 +352,7 @@ and writes **only** Neon. Tables (auto-created by `--init`):
 | `students` | the cleaned cohort (2000 rows; full original row in `payload` JSONB) |
 | `mentor_assignments` | one row per student + weak subject/lab (4813 rows) |
 | `teacher_unit_weakness` | manual teacher/unit overrides |
-| `risk_predictions` | per-student risk output (reserved for the risk endpoint) |
+| `risk_predictions` | per-student risk output (written by `/api/v1/risk/...`) |
 
 ### Deploy on Render
 

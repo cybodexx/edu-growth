@@ -9,8 +9,9 @@ from app.api.v1.router import api_router
 app = FastAPI(
     title="EduGrowth Student Analytics API",
     description=(
-        "APIs for predicting student final semester grade (CGPA) and for dynamic "
-        "mentor assignment (unit/subject/lab-wise analysis). Authentication is "
+        "Unified student analytics API: CGPA prediction, per-subject risk "
+        "prediction and dynamic mentor assignment (unit/subject/lab-wise analysis). "
+        "All data is read from the Neon PostgreSQL database. Authentication is "
         "handled by the separate MongoDB + JS auth service (teacher/student panels)."
     ),
     version="1.0.0",

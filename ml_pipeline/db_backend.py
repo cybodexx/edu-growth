@@ -118,6 +118,17 @@ CREATE TABLE IF NOT EXISTS teacher_unit_weakness (
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (subject, unit_or_component, teacher_name)
 );
+
+CREATE TABLE IF NOT EXISTS risk_predictions (
+    roll_no            TEXT PRIMARY KEY,
+    weak_subject_count INTEGER,
+    weak_lab_count     INTEGER,
+    total_risk_count   INTEGER,
+    risk_subjects      TEXT,
+    risk_labs          TEXT,
+    payload            JSONB NOT NULL DEFAULT '{}'::jsonb,
+    updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 """
 
 
@@ -144,11 +155,20 @@ def ensure_schema() -> None:
 # ---------------------------------------------------------------------------
 # Read helpers
 # ---------------------------------------------------------------------------
-def fetch_students() -> pd.DataFrame:
-    """Loads every student as a DataFrame (full original row from ``payload``)."""
+def fetch_students(limit: int | None = None, offset: int = 0) -> pd.DataFrame:
+    """Loads students as a DataFrame (full original row from ``payload``).
+
+    ``limit``/``offset`` are optional paging arguments; omit ``limit`` to load
+    the whole cohort.
+    """
+    query = "SELECT roll_no, full_name, class_section, payload FROM students ORDER BY roll_no"
+    params: list = []
+    if limit is not None:
+        query += " LIMIT %s OFFSET %s"
+        params = [int(limit), int(offset)]
     with get_connection() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("SELECT roll_no, full_name, class_section, payload FROM students;")
+            cur.execute(query, params)
             rows = cur.fetchall()
 
     if not rows:
@@ -198,6 +218,72 @@ def fetch_student(identifier: str) -> dict | None:
     return payload
 
 
+def count_students() -> int:
+    """Number of student rows currently stored."""
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT count(*) FROM students;")
+            return int(cur.fetchone()[0])
+
+
+def upsert_student(record: dict, merge: bool = True) -> dict:
+    """Inserts or updates ONE student and returns the stored payload.
+
+    ``record`` may carry any of the original columns; unknown ones are kept in
+    ``payload``. With ``merge=True`` (default) incoming fields are merged onto
+    the existing row, so a partial update never wipes the other columns.
+    """
+    roll_no = str(record.get("roll_no", "")).strip()
+    if not roll_no:
+        raise ValueError("roll_no is required")
+
+    incoming = {k: _coerce(v) for k, v in record.items() if v is not None}
+    incoming["roll_no"] = roll_no
+    existing = fetch_student(roll_no) if merge else None
+    payload = {**(existing or {}), **incoming}
+
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO students
+                    (roll_no, full_name, class_section, previous_cgpa,
+                     overall_attendance_pct, payload)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                ON CONFLICT (roll_no) DO UPDATE SET
+                    full_name = EXCLUDED.full_name,
+                    class_section = EXCLUDED.class_section,
+                    previous_cgpa = EXCLUDED.previous_cgpa,
+                    overall_attendance_pct = EXCLUDED.overall_attendance_pct,
+                    payload = EXCLUDED.payload,
+                    updated_at = now();
+                """,
+                (
+                    roll_no,
+                    _coerce(payload.get("full_name")),
+                    _coerce(payload.get("class_section")),
+                    _coerce(payload.get("previous_cgpa")),
+                    _coerce(payload.get("overall_attendance_pct")),
+                    Json(payload),
+                ),
+            )
+        conn.commit()
+    return payload
+
+
+def delete_student(roll_no: str) -> bool:
+    """Deletes one student and all derived rows. True when the row existed."""
+    roll_no = str(roll_no).strip()
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM mentor_assignments WHERE roll_no = %s;", (roll_no,))
+            cur.execute("DELETE FROM risk_predictions WHERE roll_no = %s;", (roll_no,))
+            cur.execute("DELETE FROM students WHERE roll_no = %s;", (roll_no,))
+            deleted = cur.rowcount > 0
+        conn.commit()
+    return deleted
+
+
 def fetch_assignment_keys() -> set[tuple[str, str, str]]:
     """Returns the (roll_no, subject_type, subject_name) keys already stored.
 
@@ -219,6 +305,43 @@ def load_teacher_unit_weakness() -> list[dict]:
                 "FROM teacher_unit_weakness;"
             )
             return [dict(r) for r in cur.fetchall()]
+
+
+def save_risk_predictions(df: pd.DataFrame) -> int:
+    """Stores per-student risk output (from the risk endpoint, best effort)."""
+    if df is None or df.empty:
+        return 0
+    rows = []
+    for _, row in df.iterrows():
+        data = {k: _coerce(v) for k, v in row.to_dict().items()}
+        rows.append((
+            str(data.get("roll_no")),
+            _coerce(data.get("weak_subject_count")),
+            _coerce(data.get("weak_lab_count")),
+            _coerce(data.get("total_risk_count")),
+            _coerce(data.get("risk_subjects")),
+            _coerce(data.get("risk_labs")),
+            Json(data),
+        ))
+    sql = """
+        INSERT INTO risk_predictions
+            (roll_no, weak_subject_count, weak_lab_count, total_risk_count,
+             risk_subjects, risk_labs, payload)
+        VALUES %s
+        ON CONFLICT (roll_no) DO UPDATE SET
+            weak_subject_count = EXCLUDED.weak_subject_count,
+            weak_lab_count = EXCLUDED.weak_lab_count,
+            total_risk_count = EXCLUDED.total_risk_count,
+            risk_subjects = EXCLUDED.risk_subjects,
+            risk_labs = EXCLUDED.risk_labs,
+            payload = EXCLUDED.payload,
+            updated_at = now();
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            execute_values(cur, sql, rows)
+        conn.commit()
+    return len(rows)
 
 
 # ---------------------------------------------------------------------------
