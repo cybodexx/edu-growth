@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 import joblib
 import pandas as pd
-from schema import StudentRiskRequest, StudentRiskResponse, SubjectRisk
+from app.schema import StudentRiskRequest, StudentRiskResponse, SubjectRisk
 app = FastAPI()
 
 coa_model = joblib.load("../artifacts/coa_risk.pkl")
