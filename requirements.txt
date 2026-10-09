@@ -5,3 +5,5 @@ joblib
 scikit-learn
 numpy
 xgboost
+psycopg2-binary
+pydantic
