@@ -17,6 +17,8 @@ QUICK ENDPOINT LIST
  ------------------------------------------------------------------------------
  GET     /health                                      health check
  POST    /api/v1/cgpa/predict                         predict final grade (CGPA)
+ GET     /api/v1/risk/{roll_no}                       per-subject risk flags
+ POST    /api/v1/risk/predict                         risk flags via JSON body
  GET     /api/v1/mentor/{student_id}                  full mentor analysis (JSON)
  GET     /api/v1/mentor/{student_id}/report           printable text report
  POST    /api/v1/mentor/analyze                       analysis via JSON body
@@ -61,6 +63,41 @@ Field meaning:
 Errors:
   404  {"detail": "..."}  student not found
   503  {"detail": "..."}  model file not available
+
+--------------------------------------------------------------------------------
+2b) RISK PREDICTION  GET /api/v1/risk/{roll_no}
+    (or POST /api/v1/risk/predict  body: {"roll_no": "..."})
+--------------------------------------------------------------------------------
+The student is fetched from the database and scored by six per-subject XGBoost
+classifiers. Response 200 (sample):
+
+{
+  "roll_no": "210029023375",
+  "full_name": "Aarav Rao",
+  "class_section": "CS-DS",
+  "risk_count": 4,
+  "at_risk_subjects": ["coa", "ds", "python", "cyber"],
+  "predictions": [
+    {
+      "subject": "coa",
+      "label": "Computer Organization & Architecture",
+      "probability": 0.71,
+      "threshold": 0.4,
+      "prediction": 1,
+      "status": "At Risk"
+    },
+    { "subject": "maths4", "label": "Mathematics IV", "probability": 0.31,
+      "threshold": 0.35, "prediction": 0, "status": "Safe" }
+    // ... one entry per subject: coa, maths4, dstl, ds, python, cyber
+  ]
+}
+
+Field meaning:
+  prediction  -> 1 = at risk, 0 = safe
+  status      -> "At Risk" / "Safe" (ready to show)
+  probability -> model probability (0-1); threshold = tuned decision cut-off
+
+Errors: 404 student not found, 503 risk model file not available.
 
 --------------------------------------------------------------------------------
 3) FULL MENTOR ANALYSIS  GET /api/v1/mentor/{student_id}
