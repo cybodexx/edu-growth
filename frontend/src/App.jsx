@@ -1,41 +1,26 @@
-import React, { useState } from "react";
-import "./App.css";
+import { useState } from 'react';
+import Login from './pages/Login';
+import Student from './pages/Student';
+import Teacher from './pages/Teacher';
 
-import Login from "./pages/Login.jsx";
-import Student from "./pages/Student.jsx";
-import Teacher from "./pages/Teacher.jsx";
+export default function App() {
+  // `identity` holds the hardcoded student/teacher profile coming from Login.
+  // The real auth service will replace this later.
+  const [identity, setIdentity] = useState(null);
 
-function App() {
-   const [screen, setScreen] = useState("login");
+  const handleLogin = (role, selectedIdentity) => {
+    setIdentity(selectedIdentity || { role });
+  };
 
-   return (
-       <div>
-           {screen === "login" && (
-               <Login setScreen={setScreen} />
-           )}
+  const handleLogout = () => setIdentity(null);
 
-           {screen === "student" && (
-               <Student setScreen={setScreen} />
-           )}
+  if (!identity) {
+    return <Login onLogin={handleLogin} />;
+  }
 
-           {screen === "teacher" && (
-               <Teacher setScreen={setScreen} />
-           )}
-
-           {screen === "admin" && (
-               <div className="container">
-                   <h2>Admin Dashboard</h2>
-
-                   <button
-                       className="btn btn-secondary"
-                       onClick={() => setScreen("login")}
-                   >
-                       Back to Login
-                   </button>
-               </div>
-           )}
-       </div>
-   );
+  return identity.role === 'teacher' ? (
+    <Teacher identity={identity} onLogout={handleLogout} />
+  ) : (
+    <Student identity={identity} onLogout={handleLogout} />
+  );
 }
-
-export default App;

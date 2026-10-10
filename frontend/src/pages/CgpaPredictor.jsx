@@ -1,136 +1,79 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
+import { Calculator, Loader2, Zap } from 'lucide-react';
+import { predictCgpa } from '../api/client';
+import { DEMO_STUDENT } from '../config/identities';
 
+/**
+ * Standalone CGPA predictor.
+ *
+ * NOTE: the FastAPI endpoint is POST /api/v1/cgpa/predict with body
+ * { "roll_no": "..." } — the model reads the student's stored row, so there is
+ * no manual marks entry. The Student dashboard embeds this same flow.
+ */
 export default function CgpaPredictor() {
-  const [formData, setFormData] = useState({
-    overallAttendance: '',
-    theoryAttendance: '',
-    practicalAttendance: '',
-    prevCgpa: '',
-    medicalLeaveDays: '0',
-    societyParticipation: '',
-    sportsActivity: 'None',
-    marks: { coa: '', maths4: '', dstl: '', ds: '', python: '', cyberSecurity: '' }
-  });
-
+  const [rollNo, setRollNo] = useState(DEMO_STUDENT.roll_no);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
-
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    if (name.startsWith('mark_')) {
-      const subject = name.split('_')[1];
-      setFormData(prev => ({
-        ...prev,
-        marks: { ...prev.marks, [subject]: value }
-      }));
-    } else {
-      setFormData(prev => ({ ...prev, [name]: value }));
-    }
-  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
     setResult(null);
-
     try {
-      // API Call to FastAPI Backend
-      const response = await fetch('/api/v1/cgpa/predict', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
-      });
-
-      if (!response.ok) throw new Error('Prediction failed');
-
-      const data = await response.json();
-      
-      // Simulate backend response if API is not live yet
-      // const data = { cgpa: 7.8, confidence: 85.5 }; 
-
-      setResult({
-        cgpa: data.cgpa || (Math.random() * (9.5 - 6.0) + 6.0).toFixed(2), // Mock logic fallback
-        confidence: data.confidence || (Math.random() * (95 - 75) + 75).toFixed(1) // Mock logic fallback
-      });
+      const data = await predictCgpa(rollNo.trim());
+      setResult(data);
     } catch (err) {
-      setError("Unable to predict. Please check your entered information or ensure backend is running.");
+      setError(err.message);
     } finally {
       setLoading(false);
     }
   };
 
+  const inputClass =
+    'w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-slate-200 placeholder-slate-500 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 outline-none transition-all text-sm font-bold';
+
   return (
-    <div className="bg-white p-6 rounded-lg border border-slate-200 shadow-sm mt-6">
-      <h2 className="text-xl font-semibold mb-6 text-slate-800">AI CGPA Predictor</h2>
-      
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Attendance Section */}
-        <div>
-          <h3 className="text-sm font-medium text-slate-500 uppercase mb-3">Attendance Metrics (%)</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <input type="number" name="overallAttendance" placeholder="Overall %" onChange={handleChange} required className="p-2 border rounded" />
-            <input type="number" name="theoryAttendance" placeholder="Theory %" onChange={handleChange} required className="p-2 border rounded" />
-            <input type="number" name="practicalAttendance" placeholder="Practical %" onChange={handleChange} required className="p-2 border rounded" />
-          </div>
-        </div>
+    <div className="bg-slate-900/50 p-6 rounded-xl border border-slate-800 shadow-xl mt-8">
+      <h2 className="text-xl font-bold mb-2 text-slate-100">AI CGPA Predictor</h2>
+      <p className="text-xs text-slate-400 mb-6">
+        The model loads the student's stored row from the database — no manual marks needed.
+      </p>
 
-        {/* Previous Performance */}
-        <div>
-          <h3 className="text-sm font-medium text-slate-500 uppercase mb-3">Previous Performance & Activities</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <input type="number" step="0.01" name="prevCgpa" placeholder="Previous CGPA (e.g., 7.5)" onChange={handleChange} required className="p-2 border rounded" />
-            <input type="number" name="societyParticipation" placeholder="Society Participation %" onChange={handleChange} className="p-2 border rounded" />
-            <input type="number" name="medicalLeaveDays" placeholder="Medical Leave Days" onChange={handleChange} className="p-2 border rounded" />
-            <select name="sportsActivity" onChange={handleChange} className="p-2 border rounded bg-white text-slate-700">
-              <option value="None">Sports Activity: None</option>
-              <option value="Low">Low</option>
-              <option value="Moderate">Moderate</option>
-              <option value="High">High</option>
-              <option value="Unknown">Unknown</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Subject Marks */}
-        <div>
-          <h3 className="text-sm font-medium text-slate-500 uppercase mb-3">Subject Internal Marks</h3>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            <input type="number" name="mark_coa" placeholder="COA" onChange={handleChange} required className="p-2 border rounded" />
-            <input type="number" name="mark_maths4" placeholder="Maths-4" onChange={handleChange} required className="p-2 border rounded" />
-            <input type="number" name="mark_dstl" placeholder="DSTL" onChange={handleChange} required className="p-2 border rounded" />
-            <input type="number" name="mark_ds" placeholder="DS" onChange={handleChange} required className="p-2 border rounded" />
-            <input type="number" name="mark_python" placeholder="Python" onChange={handleChange} required className="p-2 border rounded" />
-            <input type="number" name="mark_cyberSecurity" placeholder="Cyber Security" onChange={handleChange} required className="p-2 border rounded" />
-          </div>
-        </div>
-
-        <button 
-          type="submit" 
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <input
+          type="text"
+          value={rollNo}
+          onChange={(e) => setRollNo(e.target.value)}
+          placeholder="Roll number (e.g. 210029023375)"
+          required
+          className={inputClass}
+        />
+        <button
+          type="submit"
           disabled={loading}
-          className="w-full bg-slate-900 text-white font-medium py-3 rounded hover:bg-slate-800 transition disabled:bg-slate-400"
+          className="w-full bg-emerald-600/20 text-emerald-400 border border-emerald-500/50 font-bold py-3 rounded-lg hover:bg-emerald-600/30 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
         >
-          {loading ? 'Analyzing Data via AI Engine...' : 'Predict CGPA'}
+          {loading ? <><Loader2 className="animate-spin w-5 h-5" /> Running inference…</> : <><Calculator className="w-5 h-5" /> Run Prediction Engine</>}
         </button>
       </form>
 
-      {/* Result Card */}
       {error && (
-        <div className="mt-6 p-4 bg-red-50 text-red-700 border border-red-200 rounded">
+        <div className="mt-6 p-4 bg-rose-900/20 text-rose-400 border border-rose-800/50 rounded-lg text-sm font-medium">
           {error}
         </div>
       )}
 
       {result && !error && (
-        <div className="mt-6 p-6 bg-emerald-50 border border-emerald-200 rounded-lg flex justify-between items-center">
+        <div className="mt-6 p-6 bg-slate-800/50 border border-emerald-500/30 rounded-xl flex justify-between items-center">
           <div>
-            <p className="text-sm text-emerald-700 uppercase font-semibold">Predicted Final CGPA</p>
-            <p className="text-4xl font-bold text-emerald-900">{result.cgpa}</p>
+            <p className="text-xs text-slate-400 uppercase font-bold tracking-wider mb-1 flex items-center gap-1"><Zap size={12} /> Predicted Grade</p>
+            <p className="text-4xl font-black text-emerald-400">{Number(result.predicted_grade ?? 0).toFixed(2)}</p>
           </div>
           <div className="text-right">
-            <p className="text-sm text-emerald-700 uppercase font-semibold">ML Confidence</p>
-            <p className="text-2xl font-bold text-emerald-800">{result.confidence}%</p>
+            <p className="text-xs text-slate-400 uppercase font-bold tracking-wider mb-1">Model Confidence</p>
+            <p className="text-2xl font-bold text-slate-200">{result.confidence_display || `${result.confidence_score}%`}</p>
           </div>
         </div>
       )}
