@@ -1,4 +1,6 @@
 # Render Blueprint -- one-click deploy of the FastAPI service.
+# The whole backend lives in the `ML/` folder, so Render's build and start
+# commands run with Root Directory = `ML` (rootDir below).
 # The app is 100% database-backed (Neon PostgreSQL); no CSV / local data files.
 # NOTE: Render's service settings come from the Dashboard/Blueprint sync;
 # keep this file in sync with what you set on the dashboard.
@@ -8,9 +10,11 @@ services:
     runtime: python
     plan: free
     pythonVersion: "3.11.9"
+    rootDir: ML
     buildCommand: |
       set -x
       echo "=== build diagnostic start ==="
+      pwd
       python --version
       which python pip poetry || true
       if [ -f pyproject.toml ]; then

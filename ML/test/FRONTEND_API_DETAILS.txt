@@ -1,0 +1,280 @@
+================================================================================
+ EDuGrowth - FRONTEND API DETAILS
+ (build your UI against these endpoints)
+================================================================================
+Date        : 2026-10-10
+Base URL    : LOCAL  -> http://127.0.0.1:8000
+              RENDER -> https://<your-service>.onrender.com   (after deploy)
+Docs        : <base_url>/docs   (Swagger UI - every endpoint has an example)
+Auth        : NO token needed. This API is PUBLIC. Login/auth is a separate
+              MongoDB + JS service (teacher & student panels) - not this API.
+CORS        : Already enabled on the server (frontend can call from any origin).
+
+--------------------------------------------------------------------------------
+QUICK ENDPOINT LIST
+--------------------------------------------------------------------------------
+ METHOD  PATH                                          PURPOSE
+ ------------------------------------------------------------------------------
+ GET     /health                                      health check
+ POST    /api/v1/cgpa/predict                         predict final grade (CGPA)
+ GET     /api/v1/risk/{roll_no}                       per-subject risk flags
+ POST    /api/v1/risk/predict                         risk flags via JSON body
+ GET     /api/v1/mentor/{student_id}                  full mentor analysis (JSON)
+ GET     /api/v1/mentor/{student_id}/report           printable text report
+ POST    /api/v1/mentor/analyze                       analysis via JSON body
+ POST    /api/v1/students                             add / upsert a student
+ PUT     /api/v1/students/{roll_no}                   partial update
+ GET     /api/v1/students                             list students (paged)
+ GET     /api/v1/students/{roll_no}                   one student (full row)
+ DELETE  /api/v1/students/{roll_no}                   delete a student
+
+ student_id = roll number (e.g. 210029023375) OR full name (e.g. "Aarav Rao") -
+              works in the /mentor routes.
+
+--------------------------------------------------------------------------------
+1) HEALTH  GET /health
+--------------------------------------------------------------------------------
+Response 200:
+{
+  "status": "healthy",
+  "service": "edu_growth_api"
+}
+
+--------------------------------------------------------------------------------
+2) CGPA PREDICTION  POST /api/v1/cgpa/predict
+--------------------------------------------------------------------------------
+Request  (Content-Type: application/json):
+{
+  "roll_no": "210029023375"
+}
+
+Response 200 (real sample):
+{
+  "predicted_grade": 6.27,
+  "confidence_score": 81.7,
+  "confidence_display": "81.7%"
+}
+
+Field meaning:
+  predicted_grade   -> predicted final grade (0-10 scale)
+  confidence_score  -> model confidence (0-100)
+  confidence_display-> ready-to-show string, e.g. "81.7%"
+
+Errors:
+  404  {"detail": "..."}  student not found
+  503  {"detail": "..."}  model file not available
+
+--------------------------------------------------------------------------------
+2b) RISK PREDICTION  GET /api/v1/risk/{roll_no}
+    (or POST /api/v1/risk/predict  body: {"roll_no": "..."})
+--------------------------------------------------------------------------------
+The student is fetched from the database and scored by six per-subject XGBoost
+classifiers. Response 200 (sample):
+
+{
+  "roll_no": "210029023375",
+  "full_name": "Aarav Rao",
+  "class_section": "CS-DS",
+  "risk_count": 4,
+  "at_risk_subjects": ["coa", "ds", "python", "cyber"],
+  "predictions": [
+    {
+      "subject": "coa",
+      "label": "Computer Organization & Architecture",
+      "probability": 0.71,
+      "threshold": 0.4,
+      "prediction": 1,
+      "status": "At Risk"
+    },
+    { "subject": "maths4", "label": "Mathematics IV", "probability": 0.31,
+      "threshold": 0.35, "prediction": 0, "status": "Safe" }
+    // ... one entry per subject: coa, maths4, dstl, ds, python, cyber
+  ]
+}
+
+Field meaning:
+  prediction  -> 1 = at risk, 0 = safe
+  status      -> "At Risk" / "Safe" (ready to show)
+  probability -> model probability (0-1); threshold = tuned decision cut-off
+
+Errors: 404 student not found, 503 risk model file not available.
+
+--------------------------------------------------------------------------------
+3) FULL MENTOR ANALYSIS  GET /api/v1/mentor/{student_id}
+   (or POST /api/v1/mentor/analyze  body: {"student_id": "..."})
+--------------------------------------------------------------------------------
+Response 200 - top-level keys (real sample):
+{
+  "roll_no": "210029023375",
+  "full_name": "Aarav Rao",
+  "class_section": "CS-DS",
+  "risk_level": "Need Help",          // cluster name
+  "priority_rank": 1,                 // 1 = most needy ... 4 = topper
+  "needs_intervention": true,         // true if any weak area exists
+  "clustering": {
+    "cluster_id": 1,
+    "risk_level": "Need Help",
+    "distance_to_centroid": 5.13,
+    "assignment_confidence_pct": 92.0,
+    "cluster_profile": { ... }
+  },
+  "academic_metrics": {
+    "average_percentage": 45.2,
+    "lowest_subject_percentage": 28.7,
+    "progress_trend_st1_to_st2": 2.1,
+    "weak_subjects_count": 3,
+    "weak_labs_count": 3,
+    "total_weak_areas": 6,
+    "previous_cgpa": 8.31,
+    "overall_attendance_pct": 69.0
+  },
+  "subjects": [ ... ],        // see 3.1
+  "labs": [ ... ],            // see 3.2
+  "recommendations": [ ... ], // see 3.3
+  "recommendation_summary": "3 subject(s) and 3 lab(s) need intervention.",
+  "report_text": "printable multi-line text report (plain text)"
+}
+
+3.1  Each entry of "subjects"  (real sample, subject "coa"):
+{
+  "subject": "coa",
+  "label": "Computer Organization & Architecture",
+  "score_pct": 37.3,
+  "status": "weak",                    // weak / ok / good ...
+  "current_teacher": "Dr. Ananya",
+  "attendance_pct": 69.3,
+  "components": {
+    "st1_pct": 47.0, "st2_pct": 51.7, "put_pct": 0.0,
+    "unit_avg_pct": 50.6, "assignment_score": 5.3,
+    "assignment_delay_hours": 27.7, "quiz_score": 6.9
+  },
+  "units": [
+    {"unit": "Unit 1", "score_pct": 55.5, "status": "good"},
+    {"unit": "Unit 2", "score_pct": 37.5, "status": "weak"}
+  ],
+  "weak_units": [ {"unit": "Unit 2", "score_pct": 37.5} ],
+  "lowest_unit": "Unit 2",
+  "mentor_needed": true,
+  "mentor": {"name": "Dr. Sharma", "expertise_unit": "Unit 2", "rating": 8.4, "source": "..."},
+  "peer_mentor": {"roll_no": "2100290xxxxx", "name": "Rahul Agarwal", "score_pct": 88.0},
+  "suggested_action": "Unit 2 revision + assignment resubmission",
+  "reason": "..."
+}
+
+3.2  Each entry of "labs"  (similar shape, parts instead of units):
+{
+  "lab": "ds", "label": "...", "score_pct": 32.8, "status": "weak",
+  "current_teacher": "...", "attendance_pct": 44.0,
+  "parts": [ {"part": "Execution", "score_pct": 30.0, "status": "weak"},
+             {"part": "Viva",      "score_pct": 36.0, "status": "weak"} ],
+  "weak_parts": ["Execution", "Viva"],
+  "mentor_needed": true,
+  "mentor": { "name": "Dr. Singhal", "rating": 9.0, "source": "..." },
+  "peer_mentor": { "roll_no": "...", "name": "...", "score_pct": 85.0 },
+  "suggested_action": "...", "reason": "..."
+}
+
+3.3  Each entry of "recommendations"  (sorted by priority, 1 = most urgent):
+{
+  "type": "lab",              // "subject" | "lab"
+  "subject": "cyber",
+  "priority": 1,
+  "score_pct": 28.7,
+  "focus": "Lab overall",
+  "mentor": "Dr. Saxena",
+  "mentor_rating": 9.0,
+  "peer_mentor": "Rahul Agarwal",
+  "action": "Lab mentoring + pair practice"
+}
+
+Errors: 404 unknown student/roll, 503 engine could not fit (first call may take
+~5 s to fit the engine, then it is cached in memory and responses are fast).
+
+--------------------------------------------------------------------------------
+4) PRINTABLE MENTOR REPORT  GET /api/v1/mentor/{student_id}/report
+--------------------------------------------------------------------------------
+Response 200 (real sample - report_text is a plain-text printable report):
+{
+  "roll_no": "210029023375",
+  "full_name": "Aarav Rao",
+  "class_section": "CS-DS",
+  "risk_level": "Need Help",
+  "priority_rank": 1,
+  "report_text": "Aarav Rao | 210029023375 | CS-DS | Need Help | priority 1 |\n'Need Help' (priority 1). 6 mentor intervention(s) required. | ..."
+}
+
+Typical report_text looks like:
+  Aarav Rao | 210029023375 | CS-DS | Need Help | priority 1
+  'Need Help' (priority 1). 6 mentor intervention(s) required.
+  COA 37.3 % | weak: Unit 2 | mentor: Dr. Sharma
+  MATHS4 37.1 % | weak: Unit 3 | mentor: Prof. Sneha
+  DSTL 68.2 % | weak: - | mentor: -
+  DS 43.8 % | weak: Unit 1, Unit 3, Unit 4 | mentor: Dr. Singhal
+  PYTHON 48.6 % | weak: - | mentor: -
+  CYBER 48.7 % | weak: - | mentor: -
+  DS LAB 32.8 % | weak: Execution, Viva | mentor: Dr. Singhal
+  PYTHON LAB 59.4 % | weak: - | mentor: -
+  COA LAB 35.7 % | weak: Execution | mentor: Prof. Verma
+  CYBER LAB 28.7 % | weak: Execution, Viva | mentor: Dr. Saxena
+
+--------------------------------------------------------------------------------
+5) STUDENTS  (full CRUD)
+--------------------------------------------------------------------------------
+5a) ADD / UPDATE A STUDENT   POST /api/v1/students
+    Request: minimum {"roll_no": "210029099999"}
+    Any other dataset column is accepted (102 possible columns, e.g.
+    full_name, class_section, previous_cgpa, coa_st1_marks, ... - all stored).
+    If the roll_no already exists, the row is UPSERTED (fields updated).
+    IMPORTANT: mentor is auto-assigned in the background and saved to the DB.
+    Response 200: the full stored student row (102 keys).
+
+5b) UPDATE PARTIAL   PUT /api/v1/students/{roll_no}
+    Request: send ONLY the fields to change, e.g.
+    {"full_name": "Aarav R.", "coa_st1_marks": 15.0}
+    Response 200: updated full row.         400 if body is empty.
+
+5c) LIST STUDENTS   GET /api/v1/students?limit=50&offset=0
+    limit  : 1-500 (default 50)
+    offset : >= 0 (default 0)
+    Response 200 (real sample):
+    {
+      "count": 1,
+      "total": 1999,
+      "limit": 50,
+      "offset": 0,
+      "students": [ { "roll_no": 210029023375, "full_name": "Aarav Rao", ... 102 keys } ]
+    }
+    use "total" for pagination, "students" for the page rows.
+
+5d) GET ONE STUDENT   GET /api/v1/students/{roll_no}
+    Response 200: the full row (102 columns).
+    Note: roll_no may come back as a NUMBER (not a string) - handle both.
+
+5e) DELETE   DELETE /api/v1/students/{roll_no}
+    Response 200: {"deleted": "210029099999"}
+    Also removes the student's mentor assignment rows.
+
+    Errors: 400 invalid body, 404 student not found.
+
+--------------------------------------------------------------------------------
+6) ERROR FORMAT (all endpoints)
+--------------------------------------------------------------------------------
+Every error returns the FastAPI standard shape:
+  { "detail": "human readable message" }
+Status codes seen: 400 (bad body), 404 (not found), 503 (model/engine issue).
+
+--------------------------------------------------------------------------------
+7) TIPS FOR THE FRONTEND DEV
+--------------------------------------------------------------------------------
+- Add "Content-Type: application/json" on POST / PUT requests.
+- First /mentor call can take ~5 seconds (engine fits once) - afterwards fast;
+  show a small loading state on the mentor screen.
+- risk_level values: "Need Help", "Fell Down", "Normal", "Topper"
+  (priority_rank 1..4 matching that order).
+- A student "card" on the dashboard needs: roll_no, full_name, class_section,
+  predicted CGPA (/cgpa/predict), risk_level + priority_rank (/mentor/{id}).
+- The text report (/report) is great for a print/download button.
+- For search by name use  GET /api/v1/mentor/{full name}  or  /mentor/analyze.
+- To show weakness: iterate subjects + labs where mentor_needed == true, show
+  weak_units / weak_parts, and the recommended mentor + peer mentor.
+================================================================================
