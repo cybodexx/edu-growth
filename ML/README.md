@@ -238,8 +238,13 @@ get_student_mentor("Kavya Verma")    # name lookup works too
 
 ## 6. Repository structure
 
+> **Everything lives in the `ML/` folder** (ML + DB + FastAPI + notebooks +
+> models + tests). The repo root only keeps `README.md` (navigation),
+> `render.yaml` (Render Blueprint with `rootDir: ML`) and `.gitignore`.
+> The tree below is relative to `ML/`.
+
 ```text
-edu-growth/
+ML/
 ├── ml_pipeline/                 # importable runtime library
 │   ├── config.py                # subjects, thresholds, hardcoded mentor ranking, overrides
 │   ├── mentor_assigner.py       # mentor engine (KMeans + hardcoded ranking + assignment)
@@ -277,6 +282,9 @@ edu-growth/
 ## 7. Quickstart
 
 ```bash
+# Run everything from inside the ML/ folder (this is the project root now):
+cd ML
+
 # --- 1) Neon setup (one time) --------------------------------------------
 copy .env.example .env          # then set DATABASE_URL (Neon connection string)
 python -m ml_pipeline.db_backend --init
@@ -299,16 +307,18 @@ uvicorn app.main:app --reload
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/cybodexx/edu-growth)
 
 1. Click the **Deploy to Render** button (repo `cybodexx/edu-growth`).
-2. Render reads `render.yaml` and creates the Web Service automatically: Python
-   **3.11.9** (`runtime.txt`), dependencies via **Poetry** (`pyproject.toml`),
-   start command `python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT`,
-   `/health` probe.
+2. Render reads `render.yaml` and creates the Web Service automatically. The
+   Blueprint sets **Root Directory = `ML`** (`rootDir`), so the build and start
+   commands run inside `ML/`: Python **3.11.9** (`ML/runtime.txt`),
+   dependencies via **Poetry** (`ML/pyproject.toml`), start command
+   `python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT`, `/health` probe.
 3. Set the env var **`DATABASE_URL`** to your Neon connection string.
 4. **Apply / Deploy** → live in ~2–3 minutes. Check `/health` and `/docs`.
 
-> The button deploys from the repo's default branch (`main`), which now contains
-> the same blueprint. For the latest in-progress work, deploy branch
-> `PRANAV-PRAJAPATI` instead (Render branch selector / Manual Deploy).
+> The button deploys from the repo's default branch (`main`). The consolidated
+> `ML/` layout (all backend + ML in one folder, `rootDir: ML`) lives on branch
+> `PRANAV-PRAJAPATI` — deploy that branch via the Render branch selector
+> (or Manual Deploy) for the latest state.
 
 ---
 
