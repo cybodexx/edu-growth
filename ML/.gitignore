@@ -3,10 +3,8 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .venv/
-ven/
-vnv/
 
-# Secrets (local only — patterns match at any depth, so ML/.env is covered too)
+# Secrets (local only)
 .env
 !.env.example
 
