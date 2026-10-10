@@ -7,7 +7,7 @@ a FastAPI service and an ML library.
 
 - **Data →** clean the raw cohort → engineered feature tables.
 - **Models →** PCA, CGPA regression, per-subject risk classifiers, KMeans mentor clustering.
-- **Serve →** FastAPI endpoints (`/api/v1/...`) for predictions and mentor plans.
+- **Serve →** FastAPI endpoints (`/api/v1/...`) for CGPA & risk predictions, mentor plans, and student CRUD.
 - **No fragile model files for mentors:** the mentor engine re-fits in ~5 s.
 
 <p align="center">
@@ -26,8 +26,8 @@ a FastAPI service and an ML library.
 | **Dimensionality reduction** | standardise features, inspect explained variance, PCA transform | `notebooks/02_pca_dimensionality_reduction.ipynb` |
 | **CGPA prediction** | XGBoost regressor → predicted final grade + confidence | `notebooks/03_cgpa_prediction_model.ipynb`, `artifacts/student_grade_predictor.pkl` |
 | **Mentor assignment** | unit/subject/lab analysis, KMeans risk clustering, hardcoded mentor ranking, peer matching | `notebooks/04_mentor_clustering_model.ipynb`, `ml_pipeline/` |
-| **Risk prediction** | per-subject / per-lab / attendance risk classifiers (LogReg + XGBoost) | `notebooks/05_risk_prediction.ipynb` |
-| **Serving layer** | FastAPI app with CGPA prediction + mentor endpoints | `app/` |
+| **Risk prediction** | per-subject XGBoost risk classifiers, served live by the API | `notebooks/05_risk_prediction.ipynb`, `app/services/risk_service.py`, `artifacts/*_risk.pkl` |
+| **Serving layer** | FastAPI app: CGPA + risk + mentor + students CRUD endpoints | `app/` |
 | **Database layer** | Neon / PostgreSQL adapter (**required**; all reads/writes + auto tables) | `ml_pipeline/db_backend.py` |
 | **Desktop UI** | JavaFX client (planned / scaffold) | `frontend_javafx/` |
 
@@ -46,8 +46,11 @@ flowchart TD
     DB --> NB4["04 · Mentor Assignment<br/>KMeans + hardcoded mentor ranking"]
     NB4 --> MA[("Neon mentor_assignments")]
 
+    NB5["05 · Risk Prediction<br/>per-subject XGBoost"] --> M5["artifacts/*_risk.pkl (6)"]
+
     DB --> API["FastAPI<br/>app/"]
     M3 --> API
+    M5 --> API
     API --> UI["JavaFX desktop client"]
 ```
 
@@ -58,8 +61,8 @@ flowchart TD
 ```mermaid
 flowchart LR
     subgraph Stored["Stored data"]
-        NEON["Neon DB<br/>students · mentor_assignments · risk_predictions"]
-        ART["artifacts/<br/>model pkl"]
+        NEON["Neon DB<br/>students · mentor_assignments · risk_predictions · teacher_unit_weakness"]
+        ART["artifacts/<br/>CGPA + risk pkl"]
     end
 
     subgraph Training["notebooks/ (offline training & analysis)"]
@@ -79,7 +82,9 @@ flowchart LR
     subgraph Service["app/ (FastAPI)"]
         MAIN["main.py"]
         CGP["POST /cgpa/predict"]
+        RIS["POST /risk/predict"]
         MEN["mentor endpoints"]
+        STD["students CRUD"]
     end
 
     subgraph Client["Clients"]
@@ -93,14 +98,19 @@ flowchart LR
     N4 --> NEON
     N5 --> ART
     ART --> CGP
+    ART --> RIS
     CFG --> MA
     NEON --> DB
     DB --> MA
     MA --> MEN
     MAIN --> CGP
+    MAIN --> RIS
     MAIN --> MEN
+    MAIN --> STD
     CGP --> JFX
+    RIS --> JFX
     MEN --> JFX
+    STD --> JFX
     MAIN --> DOCS
 ```
 
@@ -114,7 +124,7 @@ flowchart LR
 | 02 | `02_pca_dimensionality_reduction.ipynb` | cleaned CSV (offline) | PCA CSV (offline) |
 | 03 | `03_cgpa_prediction_model.ipynb` | cleaned CSV (offline) | `artifacts/student_grade_predictor.pkl` |
 | 04 | `04_mentor_clustering_model.ipynb` | Neon `students` | Neon `mentor_assignments` |
-| 05 | `05_risk_prediction.ipynb` | cleaned CSV (offline) | `artifacts/risk_models.pkl` |
+| 05 | `05_risk_prediction.ipynb` | cleaned CSV (offline) | `artifacts/*_risk.pkl` (6 per-subject XGBoost bundles) |
 
 Notebooks 01/02/03/05 are **offline** training/analysis (the running app never
 invokes them). Only notebook 04 touches the DB.
@@ -134,10 +144,11 @@ evaluates MAE/RMSE/R², and persists the 63-feature predictor bundle to
 **04 — Mentor.** KMeans risk clustering + hardcoded mentor ranking + mentor
 plans (detailed in §5).
 
-**05 — Risk.** Builds binary risk labels per subject (`< 65 %`), per lab, and for
-attendance (`< 60 %`), trains **LogisticRegression** and **XGBoost** classifiers
-per target, selects the best model + decision threshold, and writes per-student
-risk probabilities (`risk_output.csv`).
+**05 — Risk.** Builds binary risk labels per subject (`< 65 %`), trains an
+**XGBoost** classifier per subject, tunes each decision threshold, and writes six
+per-subject bundles (`artifacts/coa_risk.pkl`, `maths4_risk.pkl`,
+`dstl_risk.pkl`, `ds_risk.pkl`, `python_risk.pkl`, `cyber_risk.pkl`) that the
+FastAPI risk endpoint loads at runtime.
 
 ---
 
@@ -193,6 +204,10 @@ flowchart LR
     KM --> G3["Topper · priority 4"]
 ```
 
+> This in-process KMeans clustering (used for mentor priority) is separate from
+> the six per-subject risk classifiers persisted as `artifacts/*_risk.pkl` and
+> served at `/api/v1/risk/...`.
+
 ### 5.4 Example mentor report
 
 ```text
@@ -243,11 +258,17 @@ edu-growth/
 │   ├── schemas/                 # pydantic models (student, mentor, risk, response)
 │   ├── services/                # prediction_service + risk_service + mentor_service + student_service
 │   └── core/                    # config/database/security (stubs)
-├── data/                        # (empty — CSVs removed, data lives in Neon)
-├── artifacts/                   # trained model pkl (CGPA predictor)
+├── data/processed/edu_growth_cleaned.csv  # kept for offline notebooks only; runtime never reads CSVs
+├── artifacts/                   # trained models: CGPA predictor + 6 risk bundles (*_risk.pkl)
 ├── frontend_javafx/             # desktop client (scaffold)
-├── render.yaml                  # Render deploy blueprint (one-click)
+├── test/FRONTEND_API_DETAILS.txt # API spec handed to the frontend team
+├── tests/                       # pytest: CGPA + risk API tests
+├── render.yaml                  # Render blueprint (one-click deploy)
+├── runtime.txt                  # pins Python 3.11.9 for Render builds
+├── pyproject.toml               # Poetry manifest (Render installs deps via Poetry)
+├── requirements.txt             # pip mirror of the same dependencies
 ├── .env.example                 # environment template
+├── WORK_DONE.md                 # ML vs backend work split
 └── README.md
 ```
 
@@ -277,13 +298,17 @@ uvicorn app.main:app --reload
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/cybodexx/edu-growth)
 
-1. Click the **Deploy to Render** button (repo `cybodexx/edu-growth`, branch `PRANAV-PRAJAPATI`).
-2. Render reads `render.yaml` and creates the Web Service automatically (install → `uvicorn app.main:app --host 0.0.0.0 --port $PORT` → `/health` probe).
+1. Click the **Deploy to Render** button (repo `cybodexx/edu-growth`).
+2. Render reads `render.yaml` and creates the Web Service automatically: Python
+   **3.11.9** (`runtime.txt`), dependencies via **Poetry** (`pyproject.toml`),
+   start command `python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT`,
+   `/health` probe.
 3. Set the env var **`DATABASE_URL`** to your Neon connection string.
 4. **Apply / Deploy** → live in ~2–3 minutes. Check `/health` and `/docs`.
 
-> The repo's branch is `PRANAV-PRAJAPATI` (not `main`) — if Render offers a branch
-> selector during the flow, pick that branch.
+> The button deploys from the repo's default branch (`main`), which now contains
+> the same blueprint. For the latest in-progress work, deploy branch
+> `PRANAV-PRAJAPATI` instead (Render branch selector / Manual Deploy).
 
 ---
 
@@ -316,13 +341,15 @@ The engine reads **only** `DATABASE_URL` (Neon). The cleaned cohort was seeded
 the code or at runtime. New students are added/updated straight through the
 `/api/v1/students` endpoints and immediately get a mentor. Mentor choices come
 from the hardcoded rankings in `ml_pipeline/config.py`. The trained CGPA model is
-loaded from `artifacts/student_grade_predictor.pkl`. See
-`ml_pipeline/db_backend.py`.
+loaded from `artifacts/student_grade_predictor.pkl`; the six per-subject risk
+models from `artifacts/*_risk.pkl`. See `ml_pipeline/db_backend.py`.
 
 ```bash
 uvicorn app.main:app --reload
 # CGPA: send just the roll number
 curl -X POST http://127.0.0.1:8000/api/v1/cgpa/predict -H "Content-Type: application/json" -d "{\"roll_no\":\"210029038252\"}"
+curl http://127.0.0.1:8000/api/v1/risk/210029038252
+curl -X POST http://127.0.0.1:8000/api/v1/risk/predict -H "Content-Type: application/json" -d "{\"roll_no\":\"210029038252\"}"
 curl http://127.0.0.1:8000/api/v1/mentor/210029038252
 curl http://127.0.0.1:8000/api/v1/mentor/210029038252/report
 # OpenAPI docs: http://127.0.0.1:8000/docs
@@ -332,6 +359,8 @@ The mentor endpoints wrap the same engine used by notebook 04
 (`ml_pipeline.get_student_mentor`). The fitted engine is cached in-process
 (`lru_cache`), so the first request pays the ~5 s fit and the rest are fast.
 Unknown roll numbers return **404**; if the engine cannot be fitted, **503**.
+The risk endpoints behave the same way (404 unknown roll, 503 model files
+missing).
 
 ---
 
@@ -340,7 +369,8 @@ Unknown roll numbers return **404**; if the engine cannot be fitted, **503**.
 | Path | Description |
 |---|---|
 | `artifacts/student_grade_predictor.pkl` | CGPA model bundle (63 features); loaded by the app for CGPA prediction |
-| ~~`data/**/*.csv`~~ | **removed** — the cleaned cohort lives in Neon `students` (2000 rows) |
+| `artifacts/*_risk.pkl` | six per-subject XGBoost risk bundles (coa / maths4 / dstl / ds / python / cyber); loaded by `/api/v1/risk/...` |
+| `data/processed/edu_growth_cleaned.csv` | cleaned cohort (kept for offline notebooks only — the running app never reads CSV) |
 
 ### Database (required)
 
@@ -359,10 +389,11 @@ and writes **only** Neon. Tables (auto-created by `--init`):
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/cybodexx/edu-growth)
 &nbsp;·&nbsp; manual: `https://render.com/deploy?repo=https://github.com/cybodexx/edu-growth`
 
-`render.yaml` is a ready blueprint: it installs `requirements.txt`, runs
-`uvicorn app.main:app --host 0.0.0.0 --port $PORT`, probes `/health`, and reads
-`DATABASE_URL` from the dashboard (set it to your Neon string). No CSV or local
-data file is used at runtime.
+`render.yaml` is a ready blueprint: Python 3.11.9 (`runtime.txt`), dependencies
+installed via Poetry (`pyproject.toml`), start command
+`python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT`, `/health` probe,
+and `DATABASE_URL` read from the dashboard (set it to your Neon string). No CSV
+or local data file is used at runtime.
 
 ```mermaid
 flowchart LR
@@ -397,9 +428,9 @@ flowchart LR
 
 `Python 3.11` · `pandas` · `numpy` · `scikit-learn` (PCA, KMeans, LogisticRegression,
 StandardScaler) · `xgboost` (CGPA + risk) · `matplotlib` / `seaborn` (notebook
-charts) · `psycopg2` (Neon/PostgreSQL) · `FastAPI` + `uvicorn` (API) ·
-`Pydantic` (schemas) · `joblib` (model persistence) · `Jupyter` (notebooks) ·
-`JavaFX` (desktop client).
+charts) · `psycopg2` (Neon/PostgreSQL) · `FastAPI` + `uvicorn` (API) · `pytest`
+(API tests) · `Pydantic` (schemas) · `joblib` (model persistence) · `Jupyter`
+(notebooks) · `JavaFX` (desktop client).
 
 ---
 
