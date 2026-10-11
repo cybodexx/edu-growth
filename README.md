@@ -5,9 +5,10 @@ independently runnable services:
 
 | Part | Tech | Purpose | Local URL |
 |------|------|---------|-----------|
-| [`frontend/`](frontend) | React 19 + Vite + Tailwind 4 | Student & faculty dashboards, login, password reset | http://localhost:5173 |
-| [`backend/`](backend) | Express 5 + MongoDB + JWT | Authentication (students & faculty), password reset, logout | http://localhost:5001 |
-| [`ML/`](ML/README.md) | FastAPI + XGBoost/KMeans on PostgreSQL (Neon) | CGPA prediction, at-risk detection, mentor assignment, student CRUD | http://127.0.0.1:8000 |
+| [`frontend/`](frontend) | React 19 + Vite + Tailwind 4 | Student & faculty dashboards, login, password reset | https://edu-growth-frontend.onrender.com/ |
+| [`backend/`](backend) | Express 5 + MongoDB + JWT | Authentication (students & faculty), password reset, logout | https://edu-growth-auth.onrender.com/ |
+| [`ML/`](ML/README.md) | FastAPI + XGBoost/KMeans on PostgreSQL (Neon) | CGPA prediction, at-risk detection, mentor assignment, student CRUD | https://edu-growth-api.onrender.com/docs#/
+|
 
 The frontend calls **both** backends: authentication goes to the Express service
 (`VITE_AUTH_BASE_URL`) and analytics goes to the FastAPI service
