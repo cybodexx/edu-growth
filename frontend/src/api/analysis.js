@@ -18,23 +18,43 @@ export function normalizeAnalysis(raw) {
   const labs = Array.isArray(raw.labs) ? raw.labs : [];
   const recommendations = Array.isArray(raw.recommendations) ? raw.recommendations : [];
 
+  // Interpret any of the flag shapes the API may use: the /risk endpoint
+  // returns { prediction: 0|1, status: 'At Risk'|'Safe' }, while other
+  // payloads may use is_at_risk / risk booleans.
+  const isAtRisk = (p) => {
+    if (typeof p.is_at_risk === 'boolean') return p.is_at_risk;
+    if (typeof p.risk === 'boolean') return p.risk;
+    if (p.prediction != null) return Number(p.prediction) === 1;
+    const status = String(p.status || '').toLowerCase().trim();
+    return status === 'weak' || status === 'at risk' || status === 'high' || status === 'critical';
+  };
+
   let derivedSubjects = subjects;
   if (!derivedSubjects.length && Array.isArray(raw.predictions)) {
-    derivedSubjects = raw.predictions.map((p) => ({
-      subject: p.subject || p.subject_name || p.name || 'Subject',
-      label: p.label || p.subject_label || p.subject || 'Subject',
-      score_pct: p.score_pct ?? p.score ?? p.percentage,
-      status: p.status || (p.is_at_risk || p.risk === true ? 'weak' : 'ok'),
-      current_teacher: p.current_teacher || p.teacher,
-      attendance_pct: p.attendance_pct,
-      units: [],
-      weak_units: p.weak_units || [],
-      mentor_needed: p.mentor_needed ?? p.is_at_risk ?? p.risk === true,
-      mentor: p.mentor || null,
-      peer_mentor: p.peer_mentor || null,
-      suggested_action: p.suggested_action || p.action,
-      reason: p.reason,
-    }));
+    derivedSubjects = raw.predictions.map((p) => {
+      const risky = isAtRisk(p);
+      const score =
+        p.score_pct ??
+        p.score ??
+        p.percentage ??
+        (p.probability != null ? Math.round(Number(p.probability) * 1000) / 10 : undefined);
+      return {
+        subject: p.subject || p.subject_name || p.name || 'Subject',
+        label: p.label || p.subject_label || p.subject || 'Subject',
+        score_pct: score,
+        status: risky ? 'weak' : 'ok',
+        current_teacher: p.current_teacher || p.teacher,
+        attendance_pct: p.attendance_pct,
+        units: [],
+        weak_units: p.weak_units || [],
+        mentor_needed: p.mentor_needed ?? risky,
+        mentor: p.mentor || null,
+        peer_mentor: p.peer_mentor || null,
+        suggested_action: p.suggested_action || p.action,
+        reason: p.reason,
+        risk_probability: p.probability,
+      };
+    });
   }
 
   return {

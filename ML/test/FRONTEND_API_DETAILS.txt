@@ -225,7 +225,9 @@ Typical report_text looks like:
     Any other dataset column is accepted (102 possible columns, e.g.
     full_name, class_section, previous_cgpa, coa_st1_marks, ... - all stored).
     If the roll_no already exists, the row is UPSERTED (fields updated).
-    IMPORTANT: mentor is auto-assigned in the background and saved to the DB.
+    IMPORTANT: the write returns immediately; the mentor is auto-assigned in a
+    background task and saved to the DB a moment later (a new row gets a mentor
+    too). Do not expect mentor data on the write response.
     Response 200: the full stored student row (102 keys).
 
 5b) UPDATE PARTIAL   PUT /api/v1/students/{roll_no}
@@ -233,18 +235,22 @@ Typical report_text looks like:
     {"full_name": "Aarav R.", "coa_st1_marks": 15.0}
     Response 200: updated full row.         400 if body is empty.
 
-5c) LIST STUDENTS   GET /api/v1/students?limit=50&offset=0
+5c) LIST STUDENTS   GET /api/v1/students?limit=50&offset=0&search=
     limit  : 1-500 (default 50)
     offset : >= 0 (default 0)
+    search : optional, case-insensitive substring match on roll_no OR full_name
+             (e.g. "Kabir" or "210029023375"); omit / empty = no filter.
     Response 200 (real sample):
     {
       "count": 1,
       "total": 1999,
       "limit": 50,
       "offset": 0,
+      "search": null,
       "students": [ { "roll_no": 210029023375, "full_name": "Aarav Rao", ... 102 keys } ]
     }
     use "total" for pagination, "students" for the page rows.
+    "search" echoes the applied term (or null).
 
 5d) GET ONE STUDENT   GET /api/v1/students/{roll_no}
     Response 200: the full row (102 columns).

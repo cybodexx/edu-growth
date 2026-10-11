@@ -10,7 +10,7 @@ Student management endpoints -- the database is the single source of truth.
 Body accepts *any* column from the cleaned dataset; unknown keys are stored in
 the row's ``payload``. No CSV is involved anywhere.
 """
-from fastapi import APIRouter, HTTPException, Path, Query
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Path, Query
 
 from app.schemas.student_schema import StudentCreate, StudentUpdate
 from app.services import student_service
@@ -19,18 +19,21 @@ from app.services.student_service import StudentServiceError
 router = APIRouter()
 
 
-@router.post("", summary="Add or upsert a student (and assign a mentor)")
-def add_student(payload: StudentCreate):
+@router.post("", summary="Add or upsert a student (mentor assigned in the background)")
+def add_student(payload: StudentCreate, background_tasks: BackgroundTasks):
     """Insert a student. If the roll number already exists, its fields are updated."""
     try:
-        return student_service.add_student(payload.model_dump(exclude_unset=True))
+        saved = student_service.add_student(payload.model_dump(exclude_unset=True))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    background_tasks.add_task(student_service.assign_mentor, saved["roll_no"])
+    return saved
 
 
-@router.put("/{roll_no}", summary="Update a student (partial, re-assigns mentor)")
+@router.put("/{roll_no}", summary="Update a student (partial, mentor re-assigned in the background)")
 def update_student(
     payload: StudentUpdate,
+    background_tasks: BackgroundTasks,
     roll_no: str = Path(..., description="Student roll number"),
 ):
     """Update only the fields you send; everything else stays as it was."""
@@ -38,17 +41,24 @@ def update_student(
     if not data:
         raise HTTPException(status_code=400, detail="No fields to update.")
     try:
-        return student_service.update_student(roll_no, data)
+        saved = student_service.update_student(roll_no, data)
     except StudentServiceError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
+    background_tasks.add_task(student_service.assign_mentor, roll_no)
+    return saved
 
 
-@router.get("", summary="List students (paged)")
+@router.get("", summary="List students (paged, optional search)")
 def list_students(
     limit: int = Query(50, ge=1, le=500, description="Rows per page"),
     offset: int = Query(0, ge=0, description="Rows to skip"),
+    search: str | None = Query(
+        None,
+        description="Case-insensitive substring match on roll number OR full name",
+        max_length=120,
+    ),
 ):
-    return student_service.list_students(limit=limit, offset=offset)
+    return student_service.list_students(limit=limit, offset=offset, search=search)
 
 
 @router.get("/{roll_no}", summary="Get one student")

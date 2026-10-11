@@ -51,7 +51,7 @@ function humanizeDetail(detail, status) {
   return `Request failed (HTTP ${status}).`;
 }
 
-async function request(path, { method = 'GET', body, signal, timeout = 20000 } = {}) {
+async function request(path, { method = 'GET', body, signal, timeout = 60000 } = {}) {
   const url = `${API_BASE_URL}${path}`;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeout);
@@ -175,8 +175,12 @@ export async function getStudentAnalysis(studentId, opts = {}) {
 /* ------------------------------------------------------------------ */
 /* Students CRUD                                                       */
 /* ------------------------------------------------------------------ */
-export const listStudents = ({ limit = 50, offset = 0 } = {}, opts = {}) =>
-  request(`/api/v1/students?limit=${limit}&offset=${offset}`, opts);
+export const listStudents = ({ limit = 50, offset = 0, search = '' } = {}, opts = {}) => {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  const term = String(search || '').trim();
+  if (term) params.set('search', term);
+  return request(`/api/v1/students?${params.toString()}`, opts);
+};
 
 export const getStudent = (rollNo, opts = {}) =>
   request(`/api/v1/students/${enc(rollNo)}`, opts);

@@ -1,16 +1,57 @@
-# React + Vite
+# EduGrowth Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React 19 + Vite + Tailwind 4 single-page app for the EduGrowth platform. It
+contains the login / register / password-reset screens and the **student** and
+**faculty** dashboards.
 
-Currently, two official plugins are available:
+The app talks to **two** backends:
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+| Env var | Backend | Default |
+|---------|---------|---------|
+| `VITE_API_BASE_URL` | FastAPI analytics (`ML/`) — public | `http://127.0.0.1:8000` |
+| `VITE_AUTH_BASE_URL` | Express auth (`backend/`) — JWT | `http://localhost:5001` |
 
-## React Compiler
+## Setup
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```bash
+npm install
+cp .env.example .env      # adjust the two base URLs if needed
+npm run dev               # http://localhost:5173
+```
 
-## Expanding the ESLint configuration
+## Scripts
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+| Command | What it does |
+|---------|--------------|
+| `npm run dev` | Start the Vite dev server with HMR |
+| `npm run build` | Production build into `dist/` |
+| `npm run preview` | Serve the production build locally |
+| `npm run lint` | Run ESLint |
+| `npm run auth:mock` | Start a **zero-dependency** in-memory auth server on port 5001 that mirrors the real `backend/` contract |
+
+### Trying it without the real backends
+
+```bash
+npm run auth:mock    # auth on :5001 (terminal 1)
+npm run dev          # frontend on :5173 (terminal 2)
+```
+
+For analytics, start the FastAPI service (see `../ML/README.md`) or the
+dashboards will show a "cannot reach the API" notice.
+
+The mock auth server accepts roster logins with the derived password
+`"<full name>@123"` (e.g. `210029023375` / `Aarav Rao@123`) and lets you
+register new students and faculty accounts.
+
+## Auth flow
+
+- `src/api/auth.js` — auth client: `loginStudent`, `registerStudent`,
+  `forgotPassword`, `resetPassword`, plus the faculty equivalents. It stores the
+  JWT + identity in `localStorage` so a refresh keeps the session.
+- `src/pages/Login.jsx` — student / faculty login, registration and
+  "forgot password". If the auth server is **unreachable** it falls back to a
+  demo identity (`src/config/identities.js`); a `401` is always shown as an error.
+- `src/pages/ResetPassword.jsx` — consumes the emailed
+  `/reset-password?token=...` link.
+- `src/api/client.js` / `src/api/analysis.js` — analytics client and payload
+  normalisation for the CGPA / risk / mentor endpoints.

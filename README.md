@@ -1,36 +1,106 @@
 # EduGrowth
 
-EduGrowth = CGPA prediction + Mentor assignment + At-Risk detection, served by a
-single FastAPI backend on top of a Neon (PostgreSQL) database.
+EduGrowth is an end-to-end student-performance platform made of **three**
+independently runnable services:
 
-> **Note:** all project code, docs and artifacts now live inside the
-> **[`ML/`](ML/README.md)** folder. This root only keeps the deploy/navigation
-> files, so Render's Blueprint (Root Directory = `ML`) keeps working.
+| Part | Tech | Purpose | Local URL |
+|------|------|---------|-----------|
+| [`frontend/`](frontend) | React 19 + Vite + Tailwind 4 | Student & faculty dashboards, login, password reset | http://localhost:5173 |
+| [`backend/`](backend) | Express 5 + MongoDB + JWT | Authentication (students & faculty), password reset, logout | http://localhost:5001 |
+| [`ML/`](ML/README.md) | FastAPI + XGBoost/KMeans on PostgreSQL (Neon) | CGPA prediction, at-risk detection, mentor assignment, student CRUD | http://127.0.0.1:8000 |
+
+The frontend calls **both** backends: authentication goes to the Express service
+(`VITE_AUTH_BASE_URL`) and analytics goes to the FastAPI service
+(`VITE_API_BASE_URL`). The analytics API is public; only auth is token-protected.
+
+## Quick start
+
+Run the three services in three terminals.
+
+**1 · Analytics API (`ML/`)**
+
+```bash
+cd ML
+python -m pip install -r requirements.txt   # or: poetry install
+cp .env.example .env                        # set DATABASE_URL (Neon Postgres)
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+**2 · Auth service (`backend/`)**
+
+```bash
+cd backend
+npm install
+cp .env.example .env                        # set MONGO_URI + JWT_SECRET
+npm run dev                                 # listens on 5001 by default
+```
+
+**3 · Frontend (`frontend/`)**
+
+```bash
+cd frontend
+npm install
+cp .env.example .env                        # VITE_API_BASE_URL + VITE_AUTH_BASE_URL
+npm run dev                                 # http://localhost:5173
+```
+
+> No MongoDB handy? The frontend ships a zero-dependency auth **mock** that
+> mirrors the real backend contract: `npm run auth:mock` (from `frontend/`).
+
+## Authentication at a glance
+
+- **Students** identify themselves by 12-digit roll number (or email).
+  - Self-registered students log in with the password they chose (bcrypt-hashed).
+  - Roster students imported from the roll-number list have no stored password;
+    their password is derived by the backend as `<full name>@123`
+    (e.g. `Aarav Rao@123`).
+  - Roster students whose name is blank or `Unknown` in the source data are
+    imported with the **roll number as the name**, so their password is
+    `<roll_no>@123` (e.g. `210029013131@123`).
+- **Faculty** log in with `email` + password. The seeded admin account is
+  `faculty@college.edu` / `teacher123` (change it for any real deployment). The
+  Faculty dashboard reads the **whole roster from the analytics API**, so one
+  teacher login can see every student.
+- **Password reset** emails a `FRONTEND_URL/reset-password?token=...` link; the
+  frontend `ResetPassword` page consumes the token. Roster students without an
+  email on file get a generic response (nothing to send to).
+- Logout revokes the JWT server-side (`RevokedToken` collection).
+
+### Roster sync (Neon → MongoDB)
+
+The analytics service reads the authoritative roster from Neon; the auth service
+authenticates against MongoDB. To copy every Neon student into MongoDB (so they
+can log in), run:
+
+```bash
+# 1. Neon -> CSV   (reads DATABASE_URL from ML/.env)
+cd ML
+python -m scripts.export_roster_csv roster.csv
+
+# 2. CSV -> MongoDB (reads MONGO_URI from backend/.env) — insert-only, idempotent
+cd ../backend
+node scripts/importStudents.js ../ML/roster.csv --apply --unknown-as-roll
+```
 
 ## What is where
 
 | Path | What |
 |------|------|
-| [`ML/README.md`](ML/README.md) | Full project docs (pipeline, API, setup, deploy) |
+| [`ML/README.md`](ML/README.md) | Full analytics docs (pipeline, models, API, deploy) |
 | [`ML/app/`](ML/app) | FastAPI service (CGPA + risk + mentor + students CRUD) |
-| [`ML/ml_pipeline/`](ML/ml_pipeline) | Runtime library: DB backend + models (`db_backend.py`, `config.py`, `mentor_assigner.py`) |
+| [`ML/ml_pipeline/`](ML/ml_pipeline) | Runtime library: DB backend + models |
 | [`ML/notebooks/`](ML/notebooks) | Offline training & analysis notebooks (01–05) |
 | [`ML/artifacts/`](ML/artifacts) | Trained models (`*.pkl`) |
+| [`backend/controllers/`](backend/controllers) | Student/faculty auth, password reset, logout |
+| [`backend/scripts/importStudents.js`](backend/scripts/importStudents.js) | Safe, idempotent roster CSV importer |
+| [`ML/scripts/export_roster_csv.py`](ML/scripts/export_roster_csv.py) | Export the Neon roster to CSV (Neon → Mongo sync step 1) |
+| [`frontend/src/api/`](frontend/src/api) | `client.js` (analytics) + `auth.js` (auth service) |
 | [`render.yaml`](render.yaml) | Render Blueprint (Root Directory `ML`) |
-
-## Quick start
-
-```bash
-cd ML
-python -m pip install -r requirements.txt   # or: poetry install
-cp .env.example .env                        # set DATABASE_URL
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
 
 ## Deploy (Render)
 
-1. Connect this repo (or the `PRANAV-PRAJAPATI` branch) with the Blueprint.
-2. Verify the service uses `rootDir: ML` and the start command
+1. Connect this repo with the Blueprint.
+2. The service uses `rootDir: ML` and the start command
    `python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
 3. Set `DATABASE_URL` in the Dashboard → Environment.
-4. Check the build log for `POETRY DEPS OK` before opening the URL.
+4. Point the frontend's `VITE_API_BASE_URL` at the deployed Render URL.

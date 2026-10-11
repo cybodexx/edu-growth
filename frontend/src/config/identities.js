@@ -1,9 +1,16 @@
 /**
  * Hardcoded identities for the demo.
  *
- * Auth is intentionally NOT implemented yet — it will be added later by the
- * separate MongoDB + JS auth service. For now the panels run with these fixed
- * identities so the FastAPI analytics can be exercised end to end.
+ * Real student/faculty login now goes through the auth service (Express +
+ * MongoDB + JWT, see src/api/auth.js). If that server is unreachable the Login
+ * page falls back to these demo identities so the FastAPI analytics can still
+ * be exercised end to end.
+ *
+ * NOTE: roster students imported from the roll-number CSV have no stored
+ * password — their password is derived by the backend as "<name>@123". The
+ * demo student below therefore uses "Aarav Rao@123" so it also works against a
+ * real backend that holds that roster row. Teacher sign-in uses the bcrypt
+ * password chosen when the faculty account was registered.
  *
  * Change these values to point the demo at a different student / teacher.
  */
@@ -39,7 +46,7 @@ export const DEMO_CREDENTIALS = {
   student: [
     {
       identifier: DEMO_STUDENT.roll_no,
-      password: 'student123',
+      password: `${DEMO_STUDENT.full_name}@123`,
       identity: DEMO_STUDENT,
     },
   ],

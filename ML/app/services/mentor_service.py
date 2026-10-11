@@ -11,6 +11,7 @@ Data source: the Neon ``students`` table (see ``ml_pipeline/db_backend.py``).
 from __future__ import annotations
 
 import sys
+import threading
 from functools import lru_cache
 from pathlib import Path
 
@@ -31,13 +32,20 @@ class MentorEngineNotAvailableError(Exception):
     """Raised when the mentor engine could not be loaded or fitted."""
 
 
+# Fitting the engine reads the whole cohort and is CPU heavy (tens of seconds on
+# a large cohort). A re-entrant lock serialises fits so concurrent mentor reads
+# and background re-assignments never trigger two expensive builds at once.
+_FIT_LOCK = threading.RLock()
+
+
 @lru_cache(maxsize=1)
 def get_assigner() -> MentorAssigner:
     """Fit the mentor engine once per process and reuse it."""
-    try:
-        return build_assigner()
-    except Exception as exc:  # noqa: BLE001 - surfaced to the client as HTTP 503
-        raise MentorEngineNotAvailableError(f"Could not load mentor engine: {exc}") from exc
+    with _FIT_LOCK:
+        try:
+            return build_assigner()
+        except Exception as exc:  # noqa: BLE001 - surfaced to the client as HTTP 503
+            raise MentorEngineNotAvailableError(f"Could not load mentor engine: {exc}") from exc
 
 
 def refresh_assigner() -> None:
@@ -48,15 +56,17 @@ def refresh_assigner() -> None:
 def reassign_student(roll_no: str) -> dict | None:
     """Refits the engine on the current DB and persists this student's mentors.
 
-    Called after a student is added/updated, so a new row gets a mentor too.
-    Best-effort: a failure here never breaks the write that already succeeded.
+    Called (in the background) after a student is added/updated, so a new row
+    gets a mentor too. Best-effort: a failure here never breaks the write that
+    already succeeded.
     """
-    refresh_assigner()
-    try:
-        return get_assigner().analyze_student(roll_no, persist=True)
-    except Exception as exc:  # noqa: BLE001 - best effort
-        print(f"[mentor] could not assign '{roll_no}': {exc}")
-        return None
+    with _FIT_LOCK:
+        refresh_assigner()
+        try:
+            return get_assigner().analyze_student(roll_no, persist=True)
+        except Exception as exc:  # noqa: BLE001 - best effort
+            print(f"[mentor] could not assign '{roll_no}': {exc}")
+            return None
 
 
 def get_mentor_analysis(student_id: str) -> dict:

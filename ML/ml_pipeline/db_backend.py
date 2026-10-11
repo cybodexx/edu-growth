@@ -155,17 +155,24 @@ def ensure_schema() -> None:
 # ---------------------------------------------------------------------------
 # Read helpers
 # ---------------------------------------------------------------------------
-def fetch_students(limit: int | None = None, offset: int = 0) -> pd.DataFrame:
+def fetch_students(limit: int | None = None, offset: int = 0, search: str | None = None) -> pd.DataFrame:
     """Loads students as a DataFrame (full original row from ``payload``).
 
     ``limit``/``offset`` are optional paging arguments; omit ``limit`` to load
-    the whole cohort.
+    the whole cohort. ``search`` is an optional case-insensitive substring match
+    against ``roll_no`` OR ``full_name``.
     """
-    query = "SELECT roll_no, full_name, class_section, payload FROM students ORDER BY roll_no"
+    query = "SELECT roll_no, full_name, class_section, payload FROM students"
     params: list = []
+    term = (search or "").strip()
+    if term:
+        query += " WHERE (roll_no ILIKE %s OR full_name ILIKE %s)"
+        like = f"%{term}%"
+        params.extend([like, like])
+    query += " ORDER BY roll_no"
     if limit is not None:
         query += " LIMIT %s OFFSET %s"
-        params = [int(limit), int(offset)]
+        params.extend([int(limit), int(offset)])
     with get_connection() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(query, params)
@@ -218,11 +225,18 @@ def fetch_student(identifier: str) -> dict | None:
     return payload
 
 
-def count_students() -> int:
-    """Number of student rows currently stored."""
+def count_students(search: str | None = None) -> int:
+    """Number of student rows currently stored (optionally matching ``search``)."""
+    query = "SELECT count(*) FROM students"
+    params: list = []
+    term = (search or "").strip()
+    if term:
+        query += " WHERE (roll_no ILIKE %s OR full_name ILIKE %s)"
+        like = f"%{term}%"
+        params.extend([like, like])
     with get_connection() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT count(*) FROM students;")
+            cur.execute(query, params)
             return int(cur.fetchone()[0])
 
 

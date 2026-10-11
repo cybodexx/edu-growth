@@ -4,7 +4,7 @@
 export function theme(isDarkMode) {
   return {
     isDarkMode,
-    bgMain: isDarkMode ? 'bg-[#0f172a]' : 'bg-[#fafafa]',
+    bgMain: isDarkMode ? 'bg-[#0f172a]' : 'bg-[#f8fafc]',
     textMain: isDarkMode ? 'text-white' : 'text-black',
     bgCard: isDarkMode ? 'bg-[#1e293b]' : 'bg-white',
     borderTheme: isDarkMode ? 'border-4 border-[#cbd5e1]' : 'border-4 border-black',
