@@ -95,12 +95,61 @@ node scripts/importStudents.js ../ML/roster.csv --apply --unknown-as-roll
 | [`backend/scripts/importStudents.js`](backend/scripts/importStudents.js) | Safe, idempotent roster CSV importer |
 | [`ML/scripts/export_roster_csv.py`](ML/scripts/export_roster_csv.py) | Export the Neon roster to CSV (Neon → Mongo sync step 1) |
 | [`frontend/src/api/`](frontend/src/api) | `client.js` (analytics) + `auth.js` (auth service) |
-| [`render.yaml`](render.yaml) | Render Blueprint (Root Directory `ML`) |
+| [`render.yaml`](render.yaml) | Render Blueprint — deploys **all three** services in one click |
 
-## Deploy (Render)
+## One-click deploy (Render)
 
-1. Connect this repo with the Blueprint.
-2. The service uses `rootDir: ML` and the start command
-   `python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
-3. Set `DATABASE_URL` in the Dashboard → Environment.
-4. Point the frontend's `VITE_API_BASE_URL` at the deployed Render URL.
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/cybodexx/edu-growth)
+
+The root [`render.yaml`](render.yaml) Blueprint provisions the **whole project**
+in a single sync — the FastAPI analytics API, the Express auth service, and the
+React frontend:
+
+| # | Service | Type | Root dir | Public URL |
+|---|---------|------|----------|------------|
+| 1 | `edu-growth-api` | Python web | `ML/` | `https://edu-growth-api.onrender.com` |
+| 2 | `edu-growth-auth` | Node web | `backend/` | `https://edu-growth-auth.onrender.com` |
+| 3 | `edu-growth-frontend` | Static site | `frontend/` | `https://edu-growth-frontend.onrender.com` |
+
+> The suffix is added by Render if the name is already taken; check the
+> Dashboard for the exact URLs. The ML API also serves OpenAPI docs at
+> `https://edu-growth-api.onrender.com/docs` and a health check at `/health`.
+
+### What you provide (Render prompts on the first sync)
+
+| Variable | For | Where to get it |
+|----------|-----|-----------------|
+| `DATABASE_URL` | ML analytics | Neon dashboard → Connection string (`...?sslmode=require`) |
+| `MONGO_URI` | Auth service | MongoDB Atlas → Connect → Drivers (allow `0.0.0.0/0`) |
+
+Everything else is wired automatically:
+
+- **Frontend URLs** — `VITE_API_BASE_URL` and `VITE_AUTH_BASE_URL` are copied
+  from the two backends' `RENDER_EXTERNAL_URL` at build time (`fromService`).
+- **Auth CORS / reset links** — `CORS_ORIGIN` and `FRONTEND_URL` are copied from
+  the frontend's `RENDER_EXTERNAL_URL`.
+- **`JWT_SECRET`** — Render generates a strong random value.
+
+### After the first deploy
+
+1. **Check the three URLs** (Dashboard → each service → the `.onrender.com` link;
+   ML: open `/health` and `/docs`).
+2. **Create the admin faculty account** (once) — from the auth service's Shell tab
+   in the Dashboard, or locally against the deployed URL:
+   ```bash
+   curl -X POST https://edu-growth-auth.onrender.com/api/faculty/register \
+     -H "Content-Type: application/json" \
+     -d '{"name":"Rajesh Verma","email":"faculty@college.edu","password":"teacher123"}'
+   ```
+3. **Copy the roster into MongoDB** so students can log in (run locally — see the
+   *Roster sync* section above, pointing `MONGO_URI` at the Atlas cluster).
+4. **MongoDB Atlas** → Network Access → allow `0.0.0.0/0` (Render IPs are dynamic).
+
+> **Free tier note:** free web services sleep after ~15 min idle and cold-start in
+> ~30–60 s (the static frontend does not sleep). The ML mentor engine also re-fits
+> on the first request after a write, so the very first mentor call may be slow.
+
+> **If the frontend was built before the backends existed**, its baked-in API URLs
+> can be empty (it then falls back to `localhost`). Fix: open the
+> `edu-growth-frontend` service → **Manual Deploy → Deploy latest commit** so Vite
+> re-runs with the now-populated URLs.

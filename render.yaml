@@ -1,33 +1,88 @@
-# Render Blueprint -- one-click deploy of the FastAPI service.
-# The whole backend lives in the `ML/` folder, so Render's build and start
-# commands run with Root Directory = `ML` (rootDir below).
-# The app is 100% database-backed (Neon PostgreSQL); no CSV / local data files.
-# NOTE: Render's service settings come from the Dashboard/Blueprint sync;
-# keep this file in sync with what you set on the dashboard.
+# ─────────────────────────────────────────────────────────────────────────────
+# EduGrowth — Render Blueprint  ·  one-click deploy of ALL THREE services
+#
+#   Deploy:  https://render.com/deploy?repo=https://github.com/cybodexx/edu-growth
+#
+# Creates:
+#   1. edu-growth-api       FastAPI analytics API     (ML/)        Python web service
+#   2. edu-growth-auth      Express auth service      (backend/)   Node web service
+#   3. edu-growth-frontend  React + Vite dashboard    (frontend/)  Static site
+#
+# Cross-service URLs are wired AUTOMATICALLY with `fromService` +
+# `RENDER_EXTERNAL_URL`, so the frontend is built already pointing at the
+# deployed ML + auth services — no manual URL copying required.
+#
+# The values you must provide on the FIRST sync (Render prompts for them):
+#   • DATABASE_URL  → your Neon PostgreSQL connection string  (for ML)
+#   • MONGO_URI     → your MongoDB Atlas connection string     (for auth)
+#
+# Resulting public URLs (unless the names are already taken):
+#   Frontend  https://edu-growth-frontend.onrender.com
+#   Auth      https://edu-growth-auth.onrender.com
+#   ML API    https://edu-growth-api.onrender.com        (docs at /docs)
+# ─────────────────────────────────────────────────────────────────────────────
 services:
+  # ── 1) ML / Analytics API  (FastAPI + Neon PostgreSQL) ─────────────────────
   - type: web
     name: edu-growth-api
     runtime: python
     plan: free
-    pythonVersion: "3.11.9"
     rootDir: ML
-    buildCommand: |
-      set -x
-      echo "=== build diagnostic start ==="
-      pwd
-      python --version
-      which python pip poetry || true
-      if [ -f pyproject.toml ]; then
-        poetry config virtualenvs.in-project true
-        poetry install --no-interaction
-        poetry run python -c "import uvicorn, fastapi, pandas, psycopg2; print('POETRY DEPS OK, uvicorn=' + uvicorn.__version__)"
-      else
-        python -m pip install --no-cache-dir -r requirements.txt
-      fi
-      python -m pip freeze | head -50
-      echo "=== build diagnostic end ==="
+    buildCommand: pip install --no-cache-dir -r requirements.txt
     startCommand: python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
       - key: DATABASE_URL
-        sync: false
+        sync: false            # Neon PostgreSQL connection string
+
+  # ── 2) Auth service  (Express + MongoDB + JWT) ─────────────────────────────
+  - type: web
+    name: edu-growth-auth
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: MONGO_URI
+        sync: false            # MongoDB Atlas connection string
+      - key: JWT_SECRET
+        generateValue: true    # Render generates a strong secret
+      # Frontend origin block — auto-wired to the deployed frontend URL.
+      - key: CORS_ORIGIN
+        fromService:
+          type: web
+          name: edu-growth-frontend
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: FRONTEND_URL
+        fromService:
+          type: web
+          name: edu-growth-frontend
+          envVarKey: RENDER_EXTERNAL_URL
+
+  # ── 3) Frontend  (React + Vite → static site) ──────────────────────────────
+  - type: web
+    name: edu-growth-frontend
+    runtime: static
+    buildCommand: cd frontend && npm ci && npm run build
+    staticPublishPath: frontend/dist
+    routes:
+      # SPA fallback — every unknown path serves index.html
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      # Baked into the Vite build; auto-wired to the two deployed backends.
+      - key: VITE_API_BASE_URL
+        fromService:
+          type: web
+          name: edu-growth-api
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: VITE_AUTH_BASE_URL
+        fromService:
+          type: web
+          name: edu-growth-auth
+          envVarKey: RENDER_EXTERNAL_URL
