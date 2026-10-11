@@ -1,8 +1,8 @@
 import { useMemo, useState, useEffect } from 'react';
 import {
   LayoutDashboard, Calculator, CalendarCheck, Users, LogOut, GraduationCap,
-  Sun, Moon, Settings, Edit3, Clock, CheckCircle2, RotateCcw, BookOpen,
-  TrendingUp, AlertTriangle, Zap, User, BarChart2, ShieldAlert, Target,
+  Sun, Moon, Settings, Edit3, Clock, CheckCircle2, RotateCcw,
+  AlertTriangle, Zap, User, BarChart2, ShieldAlert,
   RefreshCw, Wifi, WifiOff, Loader2, Printer,
 } from 'lucide-react';
 import {
@@ -16,7 +16,7 @@ import {
 import { normalizeAnalysis } from '../api/analysis';
 import { useAsync } from '../hooks/useAsync';
 import {
-  Panel, MetricCard, RiskBadge, LoadingBlock, ErrorBlock, EmptyBlock, SectionTitle,
+  LoadingBlock, ErrorBlock, EmptyBlock,
 } from '../components/ui';
 import { theme, statusColor, fmt } from '../utils/theme';
 
@@ -124,7 +124,7 @@ export default function Student({ identity, onLogout }) {
             <ApiStatusChip online={apiOnline} loading={analysisReq.loading} dark={isDarkMode} />
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 ml-auto">
             <button
               onClick={() => setIsDarkMode(!isDarkMode)}
               className={`p-3 border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-all ${isDarkMode ? 'bg-[#1e293b] text-yellow-400' : 'bg-white text-black'}`}
@@ -171,7 +171,7 @@ export default function Student({ identity, onLogout }) {
         </header>
 
         <main className={`flex-1 overflow-y-auto p-6 xl:p-10 relative ${hideScrollbar}`}>
-          <div className="w-full space-y-10">
+          <div className="w-full space-y-10 max-w-[1600px] mx-auto">
             {analysisReq.loading && !analysis && <LoadingBlock label="Fetching your analytics…" dark={isDarkMode} />}
             {analysisReq.error && !analysis && (
               <ErrorBlock error={analysisReq.error} onRetry={analysisReq.run} dark={isDarkMode} />
@@ -234,101 +234,116 @@ function ApiStatusChip({ online, loading, dark }) {
 /* ================================================================== */
 function OverviewTab({ identity, analysis, cgpa, cgpaLoading, dark }) {
   const metrics = analysis.academic_metrics || {};
+  const weakCount = metrics.total_weak_areas ?? (analysis.subjects || []).filter((s) => s.mentor_needed).length;
+
   const subjectScoreData = (analysis.subjects || [])
     .map((s) => ({ subject: (s.subject || '').toUpperCase(), score: Number(s.score_pct) || 0, status: s.status }))
     .filter((s) => s.subject);
 
-  const weakCount = metrics.total_weak_areas ?? analysis.subjects.filter((s) => s.mentor_needed).length;
+  const atRisk = (analysis.subjects || []).filter((s) => s.mentor_needed || s.status === 'weak').length;
+  const weakVsHealthyData = [
+    { name: 'At Risk', value: atRisk, color: '#fca5a5' },
+    { name: 'Healthy', value: Math.max((analysis.subjects || []).length - atRisk, 0), color: '#a7f3d0' },
+  ].filter((d) => d.value > 0);
 
   return (
-    <>
-      <div className={`p-10 xl:p-14 border-4 border-black bg-[#bfdbfe] text-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] flex flex-col md:flex-row justify-between items-start md:items-center gap-8 relative overflow-hidden w-full`}>
-        <div className="absolute right-[-10%] top-[-30%] opacity-20 pointer-events-none">
-          <GraduationCap size={400} />
-        </div>
-        <div className="relative z-10">
-          <h1 className="text-5xl xl:text-7xl font-black tracking-tighter mb-4 uppercase leading-none">
-            Hey {profileFirstName(identity?.full_name)}!
-          </h1>
-          <p className="font-black text-xl xl:text-2xl text-black/70">
-            {analysis.recommendation_summary || 'Here is your live academic summary.'}
-          </p>
-        </div>
-        <div className="flex flex-col gap-3 relative z-10">
-          <RiskBadge riskLevel={analysis.risk_level} />
-          {analysis.priority_rank != null && (
-            <span className="bg-black text-white px-4 py-2 font-black uppercase tracking-widest text-xs text-center">
-              Priority Rank #{analysis.priority_rank}
-            </span>
-          )}
-        </div>
-      </div>
-
-      {analysis.needs_intervention && (
-        <div className="p-6 bg-[#fca5a5] border-4 border-black text-black flex items-center gap-4 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] animate-pulse">
-          <AlertTriangle size={36} strokeWidth={3} className="shrink-0" />
-          <div>
-            <h3 className="text-2xl font-black uppercase">Action Required</h3>
-            <p className="font-bold text-sm uppercase tracking-widest mt-1">
-              {weakCount} weak area{weakCount === 1 ? '' : 's'} detected. Check Risk Alerts & Mentors.
+    <div className="space-y-8">
+      {/* Top Banners — Constrained Widths (live data) */}
+      <div className="flex flex-col lg:flex-row gap-6">
+        <div className={`flex-1 p-8 border-4 border-black bg-[#bfdbfe] text-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] relative overflow-hidden`}>
+          <div className="absolute right-[-10%] top-[-30%] opacity-20 pointer-events-none">
+            <GraduationCap size={400} />
+          </div>
+          <div className="relative z-10">
+            <h1 className="text-4xl md:text-5xl font-black tracking-tighter uppercase">Hey {profileFirstName(identity?.full_name)}!</h1>
+            <p className="font-bold text-lg text-black/70 mt-2">
+              {analysis.recommendation_summary || 'Here is your live academic summary.'}
             </p>
+            <div className="flex gap-3 mt-4 flex-wrap">
+              <span className={`text-black border-2 border-black px-3 py-1 font-black text-sm uppercase ${weakCount > 0 ? 'bg-[#fca5a5]' : 'bg-[#a7f3d0]'}`}>
+                {weakCount > 0 ? 'Need Help' : 'On Track'}
+              </span>
+              {analysis.priority_rank != null && (
+                <span className="bg-black text-white border-2 border-black px-3 py-1 font-black text-sm uppercase">Priority Rank #{analysis.priority_rank}</span>
+              )}
+            </div>
           </div>
         </div>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-8 w-full">
-        <MetricCard title="Overall Attendance" value={`${fmt(metrics.overall_attendance_pct, 1)}%`} accent="#a7f3d0" icon={<CalendarCheck size={120} />} />
-        <MetricCard title="Average Score" value={`${fmt(metrics.average_percentage, 1)}%`} accent="#bfdbfe" icon={<BookOpen size={120} />} />
-        <MetricCard title="Predicted CGPA" value={cgpaLoading ? '…' : fmt(cgpa?.predicted_grade, 2)} accent="#e9d5ff" footnote={cgpa?.confidence_display ? `${cgpa.confidence_display} confidence` : undefined} icon={<TrendingUp size={120} />} />
-        <MetricCard title="Weak Areas" value={weakCount} accent="#fef08a" icon={<Target size={120} />} />
+        <div className={`w-full lg:w-1/3 p-8 border-4 border-black flex items-center gap-4 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] text-black ${weakCount > 0 ? 'bg-[#fca5a5]' : 'bg-[#a7f3d0]'}`}>
+          {weakCount > 0 ? <AlertTriangle size={40} className="shrink-0" /> : <CheckCircle2 size={40} className="shrink-0" />}
+          <div>
+            <h3 className="font-black text-2xl uppercase">{weakCount > 0 ? 'Action Required' : 'All Clear'}</h3>
+            <p className="font-bold text-sm mt-1">{weakCount} weak area{weakCount === 1 ? '' : 's'} detected. Check Risk Alerts.</p>
+          </div>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 xl:gap-12 w-full">
-        <Panel className={`p-10 ${t_bg(dark)}`} dark={dark}>
-          <SectionTitle dark={dark}>Subject Scores</SectionTitle>
-          {subjectScoreData.length ? (
-            <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={subjectScoreData}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={dark ? '#3f3f46' : '#e4e4e7'} />
-                  <XAxis dataKey="subject" stroke={dark ? '#fff' : '#000'} tick={{ fontWeight: 900, fontSize: 11 }} axisLine={{ strokeWidth: 4 }} />
-                  <YAxis domain={[0, 100]} stroke={dark ? '#fff' : '#000'} tick={{ fontWeight: 900 }} axisLine={{ strokeWidth: 4 }} />
-                  <Tooltip cursor={{ fill: 'rgba(0,0,0,0.08)' }} contentStyle={tooltipDark(dark)} />
-                  <ReferenceLine y={40} stroke="#ef4444" strokeWidth={3} strokeDasharray="6 4" />
-                  <Bar dataKey="score" stroke="#000" strokeWidth={3} barSize={38}>
-                    {subjectScoreData.map((entry, i) => (
-                      <Cell key={i} fill={statusColor(entry.status)} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          ) : (
-            <EmptyBlock dark={dark} message="No subject scores available." />
-          )}
-        </Panel>
+      {/* 4-Grid Squarish Tiles (live metrics) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 w-full">
+        <div className={`p-8 bg-[#a7f3d0] text-black border-4 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] flex flex-col justify-center min-h-[160px]`}>
+          <p className="text-xs font-black uppercase tracking-widest text-black/60 bg-black/10 px-2 py-1 w-fit mb-2">Overall Attendance</p>
+          <h3 className="text-5xl font-black">{fmt(metrics.overall_attendance_pct, 1)}%</h3>
+        </div>
+        <div className={`p-8 bg-[#93c5fd] text-black border-4 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] flex flex-col justify-center min-h-[160px]`}>
+          <p className="text-xs font-black uppercase tracking-widest text-black/60 bg-black/10 px-2 py-1 w-fit mb-2">Average Score</p>
+          <h3 className="text-5xl font-black">{fmt(metrics.average_percentage, 1)}%</h3>
+        </div>
+        <div className={`p-8 bg-[#e9d5ff] text-black border-4 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] flex flex-col justify-center min-h-[160px]`}>
+          <p className="text-xs font-black uppercase tracking-widest text-black/60 bg-black/10 px-2 py-1 w-fit mb-2">Predicted CGPA</p>
+          <h3 className="text-5xl font-black">{cgpaLoading ? '…' : fmt(cgpa?.predicted_grade, 2)}</h3>
+          {cgpa?.confidence_display && <p className="text-xs font-bold mt-1">{cgpa.confidence_display} Confidence</p>}
+        </div>
+        <div className={`p-8 bg-[#fef08a] text-black border-4 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] flex flex-col justify-center min-h-[160px]`}>
+          <p className="text-xs font-black uppercase tracking-widest text-black/60 bg-black/10 px-2 py-1 w-fit mb-2">Weak Areas</p>
+          <h3 className="text-5xl font-black">{weakCount}</h3>
+        </div>
+      </div>
 
-        <Panel className={`p-10 ${t_bg(dark)}`} dark={dark}>
-          <SectionTitle dark={dark}>Weak vs Healthy</SectionTitle>
-          {subjectScoreData.length ? (
-            <div className="h-80">
+      {/* Restored Subject Scores Graph */}
+      <div className={`p-8 border-4 border-black ${t_bg(dark)} shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] w-full`}>
+        <h3 className="text-2xl font-black uppercase mb-6 border-b-4 border-black pb-2 inline-block">Subject Scores</h3>
+        {subjectScoreData.length ? (
+          <div className="h-[400px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={subjectScoreData}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={dark ? '#3f3f46' : '#e4e4e7'} />
+                <XAxis dataKey="subject" stroke={dark ? '#fff' : '#000'} tick={{ fontSize: 14, fontWeight: 'bold' }} axisLine={{ strokeWidth: 4 }} />
+                <YAxis domain={[0, 100]} stroke={dark ? '#fff' : '#000'} tick={{ fontWeight: 900 }} axisLine={{ strokeWidth: 4 }} />
+                <Tooltip cursor={{ fill: 'rgba(0,0,0,0.08)' }} contentStyle={tooltipDark(dark)} />
+                <ReferenceLine y={40} stroke="#ef4444" strokeWidth={3} strokeDasharray="6 4" />
+                <Bar dataKey="score" stroke="#000" strokeWidth={3} barSize={40}>
+                  {subjectScoreData.map((entry, i) => (
+                    <Cell key={i} fill={statusColor(entry.status)} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          <EmptyBlock dark={dark} message="No subject scores available." />
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 w-full">
+        {/* WEAK VS STRONG Pie Chart (live risk split) */}
+        <div className={`p-8 border-4 border-black ${t_bg(dark)} shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] flex flex-col`}>
+          <h3 className="text-xl font-black uppercase mb-6 border-b-4 border-black pb-2 inline-block">Weak vs Strong</h3>
+          {weakVsHealthyData.length ? (
+            <div className="h-[320px] w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
+                <PieChart margin={{ top: 30, right: 40, bottom: 30, left: 40 }}>
                   <Pie
-                    data={[
-                      { name: 'At risk', value: analysis.subjects.filter((s) => s.mentor_needed || s.status === 'weak').length, fill: '#fca5a5' },
-                      { name: 'Healthy', value: Math.max(analysis.subjects.length - analysis.subjects.filter((s) => s.mentor_needed || s.status === 'weak').length, 0), fill: '#a7f3d0' },
-                    ].filter((d) => d.value > 0)}
-                    dataKey="value"
+                    data={weakVsHealthyData}
                     innerRadius={60}
-                    outerRadius={110}
+                    outerRadius={90}
+                    dataKey="value"
                     stroke="#000"
                     strokeWidth={4}
-                    paddingAngle={3}
+                    fill={dark ? '#fff' : '#000'}
+                    labelLine={{ stroke: dark ? '#fff' : '#000', strokeWidth: 2 }}
+                    label={({ name, percent }) => (percent > 0 ? `${name} ${(percent * 100).toFixed(0)}%` : '')}
                   >
-                    {[0, 1].map((i) => (
-                      <Cell key={i} fill={i === 0 ? '#fca5a5' : '#a7f3d0'} />
-                    ))}
+                    {weakVsHealthyData.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.color} />)}
                   </Pie>
                   <Tooltip contentStyle={tooltipDark(dark)} />
                 </PieChart>
@@ -337,32 +352,33 @@ function OverviewTab({ identity, analysis, cgpa, cgpaLoading, dark }) {
           ) : (
             <EmptyBlock dark={dark} message="No risk split available." />
           )}
-        </Panel>
-      </div>
+        </div>
 
-      {analysis.recommendations?.length > 0 && (
-        <Panel className={`p-10 ${t_bg(dark)}`} dark={dark}>
-          <SectionTitle dark={dark}>Recommended Next Steps</SectionTitle>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {analysis.recommendations.slice(0, 3).map((rec, i) => (
-              <div key={i} className="p-6 border-4 border-black bg-[#fef08a] text-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-transform">
-                <div className="flex justify-between items-start mb-4 border-b-4 border-black pb-3">
-                  <p className="font-black uppercase text-lg">{(rec.subject || '').toUpperCase()}</p>
-                  <span className="bg-black text-white text-[10px] px-2 py-1 font-black uppercase">P{rec.priority}</span>
+        {/* Recommended Next Steps with LARGER FONTS (live) */}
+        <div className={`lg:col-span-2 p-8 border-4 border-black ${t_bg(dark)} shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]`}>
+          <h3 className="text-xl font-black uppercase mb-6 border-b-4 border-black pb-2 inline-block">Recommended Next Steps</h3>
+          {analysis.recommendations?.length ? (
+            <div className="space-y-4">
+              {analysis.recommendations.slice(0, 3).map((rec, i) => (
+                <div key={i} className="bg-[#fef08a] text-black border-4 border-black p-5 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-transform">
+                  <div className="flex justify-between items-center mb-2 border-b-2 border-black pb-2">
+                    <span className="font-black text-2xl uppercase">{(rec.subject || '').toUpperCase()}</span>
+                    <span className="bg-black text-white px-2 py-1 text-xs font-black">P{rec.priority ?? i + 1}</span>
+                  </div>
+                  <p className="font-bold text-lg mb-2">{rec.action || rec.focus}</p>
+                  <div className="flex flex-wrap gap-4 text-sm font-bold text-black/70 uppercase">
+                    <p>Mentor: {rec.mentor || '—'}</p>
+                    {rec.peer_mentor && <p>Peer: {rec.peer_mentor}</p>}
+                  </div>
                 </div>
-                <p className="font-bold text-sm mb-3">{rec.action || rec.focus}</p>
-                <p className="text-xs font-black uppercase tracking-widest text-black/60">
-                  Mentor: {rec.mentor || '—'}{rec.mentor_rating ? ` (${rec.mentor_rating})` : ''}
-                </p>
-                {rec.peer_mentor && (
-                  <p className="text-xs font-black uppercase tracking-widest text-black/60 mt-1">Peer: {rec.peer_mentor}</p>
-                )}
-              </div>
-            ))}
-          </div>
-        </Panel>
-      )}
-    </>
+              ))}
+            </div>
+          ) : (
+            <EmptyBlock dark={dark} message="No recommendations available." />
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -381,16 +397,17 @@ function MarksTab({ analysis, dark }) {
   const components = activeSubject?.components || {};
 
   return (
-    <div className="w-full space-y-12">
-      <h2 className="text-5xl font-black uppercase border-b-4 border-black pb-4 inline-block">Marks Analytics</h2>
+    <div className="w-full space-y-10">
+      <h2 className="text-4xl md:text-5xl font-black uppercase border-b-4 border-black pb-4 inline-block">Marks Analytics</h2>
 
-      <Panel className={`p-10 ${t_bg(dark)}`} dark={dark}>
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-10 gap-6">
-          <h3 className="text-3xl font-black uppercase">Unit-Wise Performance</h3>
+      {/* Unit-Wise Performance with min-height */}
+      <div className={`p-8 border-4 border-black ${t_bg(dark)} shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] w-full`}>
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
+          <h3 className="text-2xl font-black uppercase">Unit-Wise Performance</h3>
           <select
             value={activeSubject?.subject || ''}
             onChange={(e) => setSelected(e.target.value)}
-            className="bg-[#fef08a] text-black border-4 border-black p-4 text-xl font-black outline-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer"
+            className="bg-[#fef08a] text-black border-4 border-black p-3 text-lg font-black outline-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer w-fit"
           >
             {subjects.map((s) => (
               <option key={s.subject} value={s.subject}>{s.label || s.subject}</option>
@@ -399,7 +416,7 @@ function MarksTab({ analysis, dark }) {
         </div>
 
         {unitData.length ? (
-          <div className="h-80 w-full">
+          <div className="h-[400px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={unitData}>
                 <CartesianGrid strokeDasharray="0" vertical={false} stroke={dark ? '#3f3f46' : '#e4e4e7'} strokeWidth={3} />
@@ -407,7 +424,7 @@ function MarksTab({ analysis, dark }) {
                 <YAxis domain={[0, 100]} stroke={dark ? '#fff' : '#000'} axisLine={{ strokeWidth: 4 }} tick={{ fontWeight: 900 }} />
                 <Tooltip cursor={{ fill: 'rgba(0,0,0,0.1)' }} contentStyle={tooltipDark(dark)} />
                 <ReferenceLine y={40} stroke="#ef4444" strokeWidth={3} strokeDasharray="6 4" label={{ position: 'top', value: 'WEAK', fill: '#ef4444', fontWeight: 'black', fontSize: 12 }} />
-                <Bar dataKey="score" stroke="#000" strokeWidth={4}>
+                <Bar dataKey="score" stroke="#000" strokeWidth={4} barSize={44}>
                   {unitData.map((u, i) => <Cell key={i} fill={statusColor(u.status)} />)}
                 </Bar>
               </BarChart>
@@ -416,11 +433,11 @@ function MarksTab({ analysis, dark }) {
         ) : (
           <EmptyBlock dark={dark} message="This subject has no unit breakdown in the current response." />
         )}
-      </Panel>
+      </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-12 w-full">
-        <Panel className={`p-10 ${t_bg(dark)}`} dark={dark}>
-          <SectionTitle dark={dark}>Component Breakdown</SectionTitle>
+        <div className={`p-8 border-4 border-black ${t_bg(dark)} shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]`}>
+          <h3 className="text-2xl font-black uppercase mb-6 border-b-4 border-black pb-2 inline-block">Component Breakdown</h3>
           {activeSubject ? (
             <div className="space-y-5">
               <ComponentRow label="ST1" value={components.st1_pct} />
@@ -441,39 +458,40 @@ function MarksTab({ analysis, dark }) {
           ) : (
             <EmptyBlock dark={dark} message="No components available." />
           )}
-        </Panel>
+        </div>
 
-        <Panel className={`p-10 ${t_bg(dark)}`} dark={dark}>
-          <SectionTitle dark={dark}>Lab Assessments</SectionTitle>
-          <div className="space-y-6">
-            {(analysis.labs || []).length ? (
-              analysis.labs.map((lab, i) => (
-                <div key={i} className="bg-[#a7f3d0] border-4 border-black p-4 text-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-transform">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xl font-black uppercase">{lab.label || lab.lab}</span>
-                    <span className="text-2xl font-black bg-white border-4 border-black px-4 py-2">{fmt(lab.score_pct, 1)}%</span>
+        {/* Lab Assessments (grid tiles) */}
+        <div className={`p-8 border-4 border-black ${t_bg(dark)} shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]`}>
+          <h3 className="text-2xl font-black uppercase mb-6 border-b-4 border-black pb-2 inline-block">Lab Assessments</h3>
+          {analysis.labs?.length ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {analysis.labs.map((lab, i) => (
+                <div key={i} className="flex flex-col justify-between gap-4 bg-[#a7f3d0] border-4 border-black p-6 text-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-transform">
+                  <span className="text-2xl font-black uppercase">{lab.label || lab.lab}</span>
+                  <div className="flex justify-between items-center gap-3">
+                    <span className="text-3xl font-black bg-white border-4 border-black px-4 py-2">{fmt(lab.score_pct, 1)}%</span>
+                    {lab.parts?.length > 0 && (
+                      <div className="flex flex-wrap gap-2 justify-end">
+                        {lab.parts.map((p, j) => (
+                          <span key={j} className="text-[10px] font-black uppercase tracking-widest border-2 border-black px-2 py-1" style={{ backgroundColor: statusColor(p.status) }}>
+                            {p.part}: {fmt(p.score_pct, 1)}%
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  {lab.parts?.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mt-3">
-                      {lab.parts.map((p, j) => (
-                        <span key={j} className="text-[10px] font-black uppercase tracking-widest border-2 border-black px-2 py-1" style={{ backgroundColor: statusColor(p.status) }}>
-                          {p.part}: {fmt(p.score_pct, 1)}%
-                        </span>
-                      ))}
-                    </div>
-                  )}
                 </div>
-              ))
-            ) : (
-              <EmptyBlock dark={dark} message="No lab data available." />
-            )}
-          </div>
-        </Panel>
+              ))}
+            </div>
+          ) : (
+            <EmptyBlock dark={dark} message="No lab data available." />
+          )}
+        </div>
       </div>
 
       {(analysis.labs || []).length > 0 && (
-        <Panel className={`p-10 ${t_bg(dark)}`} dark={dark}>
-          <SectionTitle dark={dark}>Lab Parts Comparison</SectionTitle>
+        <div className={`p-8 border-4 border-black ${t_bg(dark)} shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]`}>
+          <h3 className="text-2xl font-black uppercase mb-6 border-b-4 border-black pb-2 inline-block">Lab Parts Comparison</h3>
           <div className="h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
@@ -489,7 +507,7 @@ function MarksTab({ analysis, dark }) {
               </BarChart>
             </ResponsiveContainer>
           </div>
-        </Panel>
+        </div>
       )}
     </div>
   );
@@ -521,26 +539,26 @@ function AttendanceTab({ analysis, dark }) {
   const labs = (analysis.labs || []).filter((l) => l.attendance_pct != null);
   const overall = Number(metrics.overall_attendance_pct);
   const rows = [
-    ...subjects.map((s) => ({ name: (s.label || s.subject).toUpperCase(), val: Number(s.attendance_pct), kind: 'Subject' })),
-    ...labs.map((l) => ({ name: `${(l.label || l.lab).toUpperCase()} (Lab)`, val: Number(l.attendance_pct), kind: 'Lab' })),
+    ...subjects.map((s) => ({ name: (s.label || s.subject).toUpperCase(), val: Number(s.attendance_pct) })),
+    ...labs.map((l) => ({ name: `${(l.label || l.lab).toUpperCase()} (LAB)`, val: Number(l.attendance_pct) })),
   ];
 
   return (
-    <div className={`p-10 xl:p-14 border-4 border-black ${t_bg(dark)} shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] w-full`} style={{ borderColor: '#000' }}>
+    <div className={`p-10 xl:p-14 border-4 border-black ${t_bg(dark)} shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] w-full`}>
       <h2 className="text-5xl font-black uppercase tracking-tight mb-12 border-b-4 border-black pb-4 inline-block">Attendance Panel</h2>
-
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-12 mt-4">
+
         <div className="space-y-6">
-          <h3 className="text-3xl font-black uppercase mb-4">Subjects & Labs</h3>
+          <h3 className="text-2xl font-black uppercase mb-6">Subjects & Labs</h3>
           {rows.length ? (
             rows.map((sub, i) => (
-              <div key={i} className="mb-2">
-                <div className="flex justify-between font-black uppercase text-sm mb-2">
+              <div key={i} className="mb-4">
+                <div className="flex justify-between font-black uppercase text-lg mb-2">
                   <span>{sub.name}</span>
                   <span className={sub.val < 75 ? 'text-red-500' : 'text-emerald-500'}>{sub.val.toFixed(1)}%</span>
                 </div>
-                <div className="h-8 w-full bg-zinc-200 border-4 border-black overflow-hidden shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                  <div className={`h-full border-r-4 border-black ${sub.val < 75 ? 'bg-[#fca5a5]' : 'bg-[#86efac]'}`} style={{ width: `${Math.min(sub.val, 100)}%` }} />
+                <div className="h-8 w-full bg-zinc-200 border-4 border-black overflow-hidden shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                  <div className={`h-full border-r-4 border-black ${Number.isFinite(sub.val) && sub.val >= 75 ? 'bg-[#a7f3d0]' : 'bg-[#fca5a5]'}`} style={{ width: `${Math.min(sub.val, 100)}%` }} />
                 </div>
               </div>
             ))
@@ -551,29 +569,33 @@ function AttendanceTab({ analysis, dark }) {
 
         <div className={`flex flex-col items-center justify-center border-4 border-black p-10 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] ${dark ? 'bg-[#312e81]' : 'bg-[#e0e7ff]'} relative`}>
           <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: 'radial-gradient(#000 2px, transparent 2px)', backgroundSize: '16px 16px' }} />
-          <h3 className="text-3xl font-black uppercase mb-8 relative z-10 text-black">Overall Attendance</h3>
-          <div className="h-72 w-full relative z-10 bg-white border-4 border-black p-4 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
+          <h3 className="text-3xl font-black uppercase mb-8 relative z-10 bg-white border-4 border-black px-6 py-2 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-black">Overall Distribution</h3>
+
+          <div className="h-80 w-full relative z-10 bg-white border-4 border-black p-4 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
             <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
+              <PieChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
                 <Pie
                   data={[
-                    { name: 'Present', value: Number.isFinite(overall) ? overall : 0, color: '#86efac' },
-                    { name: 'Missed', value: Number.isFinite(overall) ? Math.max(100 - overall, 0) : 100, color: '#fca5a5' },
+                    { name: 'Present', value: Number.isFinite(overall) ? overall : 0, color: '#a7f3d0' },
+                    { name: 'Absent', value: Number.isFinite(overall) ? Math.max(100 - overall, 0) : 100, color: '#fca5a5' },
                   ]}
-                  innerRadius={70}
-                  outerRadius={110}
+                  innerRadius={60}
+                  outerRadius={92}
                   dataKey="value"
+                  fill="#000"
                   stroke="#000"
                   strokeWidth={4}
+                  labelLine={{ stroke: '#000', strokeWidth: 2 }}
+                  label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
                 >
-                  <Cell fill="#86efac" />
+                  <Cell fill="#a7f3d0" />
                   <Cell fill="#fca5a5" />
                 </Pie>
                 <Tooltip contentStyle={tooltipDark(false)} />
               </PieChart>
             </ResponsiveContainer>
             <div className="absolute inset-0 flex items-center justify-center flex-col pointer-events-none mt-2">
-              <span className="text-5xl font-black text-black">{Number.isFinite(overall) ? `${overall.toFixed(0)}%` : '—'}</span>
+              <span className="text-6xl xl:text-7xl font-black text-black">{Number.isFinite(overall) ? `${overall.toFixed(0)}%` : '—'}</span>
             </div>
           </div>
           <p className="relative z-10 mt-6 font-black uppercase tracking-widest text-sm text-black/70">
@@ -597,20 +619,15 @@ function RisksTab({ analysis, dark }) {
   const riskCount = analysis.risk_count ?? risky.length;
 
   return (
-    <div className={`p-10 xl:p-14 border-4 border-black ${t_bg(dark)} shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] w-full`}>
-      <h2 className="text-5xl font-black uppercase tracking-tight mb-4 flex items-center gap-4 border-b-4 border-black pb-4">
-        <ShieldAlert size={48} strokeWidth={3} /> Risk Alerts
-      </h2>
+    <div className={`p-8 xl:p-12 border-4 border-black ${t_bg(dark)} shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] w-full`}>
+      <h2 className="text-4xl md:text-5xl font-black uppercase tracking-tight mb-8 border-b-4 border-black pb-4 inline-block">Risk Alerts</h2>
 
-      <div className={`mt-6 mb-12 p-6 border-4 border-black text-black flex items-center gap-4 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] ${risky.length ? 'bg-[#fca5a5]' : 'bg-[#a7f3d0]'}`}>
-        {risky.length ? <AlertTriangle size={36} strokeWidth={3} className="shrink-0" /> : <CheckCircle2 size={36} strokeWidth={3} className="shrink-0" />}
+      <div className={`mb-10 p-6 border-4 border-black text-black flex items-center gap-4 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] w-fit ${risky.length ? 'bg-[#fca5a5]' : 'bg-[#a7f3d0]'}`}>
+        {risky.length ? <AlertTriangle size={32} strokeWidth={3} className="shrink-0" /> : <CheckCircle2 size={32} strokeWidth={3} className="shrink-0" />}
         <div>
           <h3 className="text-2xl font-black uppercase">{risky.length ? 'Action Required' : 'All Clear'}</h3>
-          <p className="font-bold text-sm uppercase tracking-widest mt-1">
-            {risky.length ? `${riskCount} subject/lab area(s) flagged by the risk engine.` : 'No weak areas detected for you.'}
-          </p>
+          <p className="font-bold text-base mt-1 uppercase tracking-widest">{riskCount} subject/lab area(s) flagged by the risk engine.</p>
         </div>
-        <div className="ml-auto"><RiskBadge riskLevel={analysis.risk_level} /></div>
       </div>
 
       {chartData.length > 0 && (
@@ -620,7 +637,7 @@ function RisksTab({ analysis, dark }) {
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="subject" stroke="#000" tick={{ fontWeight: 'bold', fontSize: 11 }} />
+                <XAxis dataKey="subject" stroke="#000" tick={{ fontWeight: 'bold', fontSize: 12 }} />
                 <YAxis domain={[0, 100]} stroke="#000" tick={{ fontWeight: 'bold' }} />
                 <Tooltip cursor={{ fill: 'rgba(0,0,0,0.1)' }} contentStyle={tooltipDark(false)} />
                 <ReferenceLine y={40} stroke="red" strokeWidth={4} strokeDasharray="5 5" label={{ position: 'top', value: 'DANGER ZONE', fill: 'red', fontWeight: 'black' }} />
@@ -632,34 +649,34 @@ function RisksTab({ analysis, dark }) {
       )}
 
       {risky.length ? (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 w-full">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 w-full">
           {risky.map((risk, idx) => {
             const weakParts = risk.weak_units?.map((w) => w.unit) || risk.weak_parts || [];
             return (
-              <div key={idx} className="p-8 border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-2 transition-transform bg-[#fca5a5]">
-                <div className="flex justify-between items-start text-black mb-6 border-b-4 border-black pb-4">
-                  <h3 className="text-3xl font-black uppercase">{(risk.label || risk.subject || risk.lab || '').toUpperCase()}</h3>
-                  <span className="bg-black text-white px-3 py-2 font-black uppercase tracking-widest text-[10px] border-2 border-white">
+              <div key={idx} className="p-8 border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-2 transition-transform bg-[#fca5a5] flex flex-col gap-6">
+                <div className="flex justify-between items-start text-black mb-2 border-b-4 border-black pb-4">
+                  <h3 className="text-3xl font-black uppercase leading-none">{(risk.label || risk.subject || risk.lab || '').toUpperCase()}</h3>
+                  <span className="bg-black text-white px-3 py-2 font-black uppercase tracking-widest text-xs border-2 border-white shrink-0">
                     {risk.kind === 'lab' ? 'Lab' : 'Subject'} · {fmt(risk.score_pct, 1)}%
                   </span>
                 </div>
                 <div className="space-y-4 text-black">
                   <div>
-                    <p className="text-xs font-black uppercase tracking-widest text-black/70 mb-1">Weak Areas</p>
-                    <p className="font-black text-xl bg-white border-4 border-black px-4 py-2 inline-block shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-                      {weakParts.length ? weakParts.join(', ') : risk.lowest_unit || 'Overall'}
+                    <p className="text-sm font-black uppercase tracking-widest text-black/70 mb-2">Weak Areas</p>
+                    <p className="font-black text-xl bg-white border-4 border-black px-4 py-2 w-fit shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                      {(weakParts.length ? weakParts.join(', ') : risk.lowest_unit || 'Overall')}
                     </p>
                   </div>
                   {risk.reason && (
-                    <div>
-                      <p className="text-xs font-black uppercase tracking-widest text-black/70 mb-1">Diagnostic Reason</p>
-                      <p className="font-bold text-sm border-l-4 border-black pl-3">{risk.reason}</p>
+                    <div className="bg-black text-white border-4 border-black p-4 mt-2">
+                      <p className="text-xs font-black uppercase text-white/60 mb-1">Diagnostic Reason</p>
+                      <p className="font-bold text-lg">{risk.reason}</p>
                     </div>
                   )}
                   {risk.suggested_action && (
                     <div>
                       <p className="text-xs font-black uppercase tracking-widest text-black/70 mb-1">Suggested Action</p>
-                      <p className="font-bold text-sm">{risk.suggested_action}</p>
+                      <p className="font-black text-base text-black">{risk.suggested_action}</p>
                     </div>
                   )}
                 </div>
@@ -706,21 +723,54 @@ function PredictorTab({ rollNo, cgpa, cgpaReq, analysis, dark }) {
     URL.revokeObjectURL(url);
   };
 
+  const metrics = analysis.academic_metrics || {};
+  const weakCount = metrics.total_weak_areas ?? (analysis.subjects || []).filter((s) => s.mentor_needed).length;
+  const features = [
+    { label: 'Attendance', value: metrics.overall_attendance_pct != null ? `${fmt(metrics.overall_attendance_pct, 1)}%` : '—' },
+    { label: 'Average Score', value: metrics.average_percentage != null ? `${fmt(metrics.average_percentage, 1)}%` : '—' },
+    { label: 'Weak Areas', value: weakCount },
+    { label: 'Previous CGPA', value: metrics.previous_cgpa != null ? fmt(metrics.previous_cgpa, 2) : '—' },
+  ];
+  const confidenceScore = Number(cgpa?.confidence_score);
+  const confidencePct = Number.isFinite(confidenceScore) ? Math.max(0, Math.min(100, confidenceScore)) : 0;
+
   return (
-    <div className="grid grid-cols-1 xl:grid-cols-2 gap-12 w-full">
-      <Panel className={`p-10 xl:p-14 ${t_bg(dark)}`} dark={dark}>
-        <SectionTitle dark={dark}>CGPA Predictor Engine</SectionTitle>
-        <p className="font-bold text-sm mb-8 opacity-70">
-          The model reads this student's stored row directly — no manual entry needed. Roll:
-          <span className="ml-2 font-black">{rollNo}</span>
+    <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 xl:gap-12 w-full">
+      {/* ENGINE */}
+      <div className={`p-8 xl:p-12 border-4 border-black ${t_bg(dark)} shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] flex flex-col w-full`}>
+        <div className="flex items-center gap-4 border-b-4 border-black pb-6 mb-8">
+          <div className="p-3 bg-[#c4b5fd] border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] shrink-0">
+            <Calculator size={36} strokeWidth={3} className="text-black" />
+          </div>
+          <div>
+            <h2 className="text-4xl font-black uppercase tracking-tight">Predictor Engine</h2>
+            <p className="text-sm font-black uppercase tracking-widest opacity-60 mt-1">AI Grade Predictor · Σ live student profile</p>
+          </div>
+        </div>
+
+        <p className="font-bold text-base mb-8 opacity-80">
+          The model predicts your final grade by learning from your{' '}
+          <span className="font-black">attendance, unit scores, exam components and weak-area load</span>. Press{' '}
+          <span className="font-black">Run Prediction</span> to watch it work.
         </p>
+
+        {/* Model inputs (live) */}
+        <h3 className="text-xl font-black uppercase mb-4 border-b-4 border-black pb-2 inline-block">Model Inputs (live)</h3>
+        <div className="grid grid-cols-2 gap-4 mb-8">
+          {features.map((f, i) => (
+            <div key={i} className="p-5 border-4 border-black text-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]" style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }}>
+              <p className="text-xs font-black uppercase tracking-widest text-black/60 mb-1">{f.label}</p>
+              <p className="text-3xl font-black leading-none">{f.value}</p>
+            </div>
+          ))}
+        </div>
 
         <button
           onClick={() => cgpaReq.run()}
           disabled={cgpaReq.loading}
           className="w-full py-6 uppercase font-black text-2xl bg-[#c4b5fd] text-black border-4 border-black shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-none transition-all disabled:opacity-50 flex items-center justify-center gap-3"
         >
-          {cgpaReq.loading ? <><Loader2 className="animate-spin w-8 h-8" /> Predicting…</> : <><Calculator className="w-8 h-8" /> Run Prediction</>}
+          {cgpaReq.loading ? <><Loader2 className="animate-spin w-8 h-8" /> Predicting…</> : <><Zap className="w-8 h-8" /> Run Prediction</>}
         </button>
 
         {cgpaReq.error && (
@@ -732,12 +782,23 @@ function PredictorTab({ rollNo, cgpa, cgpaReq, analysis, dark }) {
         {cgpa && (
           <div className="mt-10 p-8 bg-[#a7f3d0] border-4 border-black text-center shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
             <p className="text-sm font-black uppercase tracking-widest text-black/70 mb-3 flex items-center justify-center gap-2">
-              <Zap size={16} /> Predicted Final Grade (0–10)
+              <Zap size={16} /> Model Prediction · Final Grade (0–10)
             </p>
-            <h1 className="text-7xl font-black text-black">{fmt(cgpa.predicted_grade, 2)}</h1>
-            <p className="mt-4 inline-block bg-black text-white px-4 py-2 font-black uppercase tracking-widest text-xs">
-              Confidence {cgpa.confidence_display || `${fmt(cgpa.confidence_score, 1)}%`}
-            </p>
+            <h1 className="text-8xl font-black text-black leading-none">{fmt(cgpa.predicted_grade, 2)}</h1>
+            {metrics.previous_cgpa != null && (
+              <p className="mt-3 text-sm font-black uppercase tracking-widest text-black/60">
+                Previous {fmt(metrics.previous_cgpa, 2)} → Predicted {fmt(cgpa.predicted_grade, 2)}
+              </p>
+            )}
+            <div className="mt-6 mx-auto max-w-md">
+              <div className="flex justify-between font-black uppercase text-xs mb-2">
+                <span>Model Confidence</span>
+                <span>{cgpa.confidence_display || `${fmt(cgpa.confidence_score, 1)}%`}</span>
+              </div>
+              <div className="h-6 w-full bg-white border-4 border-black overflow-hidden">
+                <div className="h-full bg-black transition-all duration-700" style={{ width: `${confidencePct}%` }}></div>
+              </div>
+            </div>
           </div>
         )}
 
@@ -771,26 +832,34 @@ function PredictorTab({ rollNo, cgpa, cgpaReq, analysis, dark }) {
             </pre>
           )}
         </div>
-      </Panel>
+      </div>
 
-      <Panel className={`p-10 xl:p-14 ${t_bg(dark)} flex flex-col`} dark={dark}>
-        <SectionTitle dark={dark}>Why this score</SectionTitle>
-        <div className="space-y-6 flex-1">
-          {(analysis.recommendations || []).slice(0, 4).map((rec, i) => (
-            <div key={i} className="p-6 border-4 border-black text-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-transform" style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }}>
-              <div className="flex justify-between items-center mb-2">
-                <h4 className="font-black text-lg uppercase">{(rec.subject || '').toUpperCase()} · {rec.type || 'area'}</h4>
-                <span className="font-black bg-white border-2 border-black px-2 py-1 text-xs">{fmt(rec.score_pct, 1)}%</span>
-              </div>
-              <p className="font-bold text-sm">{rec.action || rec.focus}</p>
-              <p className="text-xs font-black uppercase tracking-widest mt-2 opacity-70">
-                Mentor: {rec.mentor || '—'} {rec.peer_mentor ? `· Peer: ${rec.peer_mentor}` : ''}
-              </p>
-            </div>
-          ))}
-          {!analysis.recommendations?.length && <EmptyBlock dark={dark} message="No recommendation signals available." />}
+      {/* WHY THIS SCORE */}
+      <div className={`p-8 xl:p-12 border-4 border-black ${t_bg(dark)} shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] flex flex-col w-full`}>
+        <div className="border-b-4 border-black pb-6 mb-8">
+          <h3 className="text-3xl font-black uppercase tracking-tight">Why this score</h3>
+          <p className="text-sm font-black uppercase tracking-widest opacity-60 mt-1">weak signals feeding the prediction</p>
         </div>
-      </Panel>
+
+        {analysis.recommendations?.length ? (
+          <div className="space-y-8 flex-1">
+            {analysis.recommendations.slice(0, 4).map((rec, i) => (
+              <div key={i} className="p-6 border-4 border-black text-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-transform" style={{ backgroundColor: CHART_COLORS[i % CHART_COLORS.length] }}>
+                <div className="flex justify-between items-center mb-3">
+                  <h4 className="font-black text-xl uppercase">{(rec.subject || '').toUpperCase()} · {rec.type || 'area'}</h4>
+                  <span className="font-black bg-white border-2 border-black px-2 py-1 text-xs">{fmt(rec.score_pct, 1)}%</span>
+                </div>
+                <p className="font-bold text-base">{rec.action || rec.focus}</p>
+                <p className="text-xs font-black uppercase tracking-widest mt-2 opacity-70">
+                  Mentor: {rec.mentor || '—'} {rec.peer_mentor ? `· Peer: ${rec.peer_mentor}` : ''}
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyBlock dark={dark} message="No recommendation signals available." />
+        )}
+      </div>
     </div>
   );
 }
@@ -826,7 +895,7 @@ function MentorsTab({ analysis, dark }) {
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 xl:gap-12 w-full">
-      <Panel className={`p-10 xl:p-14 ${t_bg(dark)} w-full`} dark={dark}>
+      <div className={`p-10 xl:p-14 border-4 border-black ${t_bg(dark)} shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] w-full`}>
         <h2 className="text-4xl font-black uppercase tracking-tight mb-2">Allocated Mentors</h2>
         <p className="text-sm font-black uppercase tracking-widest mb-10 border-b-4 border-black pb-4 opacity-60">
           Auto-assigned from weak subject / lab analysis.
@@ -872,12 +941,12 @@ function MentorsTab({ analysis, dark }) {
             <EmptyBlock dark={dark} message="No mentors allocated — no weak areas!" />
           )}
         </div>
-      </Panel>
+      </div>
 
-      <Panel className={`p-10 xl:p-14 ${t_bg(dark)} w-full flex flex-col`} dark={dark}>
-        <SectionTitle dark={dark}>Mentor Ratings</SectionTitle>
+      <div className={`p-10 xl:p-14 border-4 border-black ${t_bg(dark)} shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] w-full flex flex-col`}>
+        <h3 className="text-2xl font-black uppercase mb-6 border-b-4 border-black pb-2 inline-block">Mentor Ratings</h3>
         {ratingData.length ? (
-          <div className="flex-1 min-h-[400px]">
+          <div className="h-[400px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={ratingData} layout="vertical" margin={{ left: 40 }}>
                 <CartesianGrid strokeDasharray="3 3" horizontal vertical={false} stroke={dark ? '#3f3f46' : '#e4e4e7'} />
@@ -891,7 +960,7 @@ function MentorsTab({ analysis, dark }) {
         ) : (
           <EmptyBlock dark={dark} message="No mentor ratings available." />
         )}
-      </Panel>
+      </div>
     </div>
   );
 }
@@ -915,7 +984,7 @@ function StudyStationTab({ dark, hideScrollbar }) {
 
   useEffect(() => {
     if (!isActive || timeLeft <= 0) return undefined;
-    const interval = setInterval(() => setTimeLeft((t) => t - 1), 1000);
+    const interval = setInterval(() => setTimeLeft((time) => time - 1), 1000);
     return () => clearInterval(interval);
   }, [isActive, timeLeft]);
 
@@ -1023,21 +1092,21 @@ function ProfileTab({ identity, student, analysis, cgpa, dark }) {
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 xl:gap-12 w-full">
-      <Panel className={`xl:col-span-2 p-10 xl:p-14 ${t_bg(dark)} flex flex-col w-full`} dark={dark}>
-        <h2 className="text-5xl font-black uppercase tracking-tight mb-10 border-b-4 border-black pb-4 inline-block">Master Profile</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+      <div className={`xl:col-span-2 p-10 xl:p-14 border-4 border-black ${t_bg(dark)} shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] flex flex-col w-full`}>
+        <h2 className="text-4xl font-black uppercase tracking-tight mb-10 border-b-4 border-black pb-4 inline-block">Master Profile</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {fields.map((f, i) => (
-            <div key={i} className="p-6 border-4 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-transform text-black" style={{ backgroundColor: f.bg }}>
-              <p className="text-xs font-black uppercase tracking-widest text-black/60 mb-2">{f.label}</p>
-              <h3 className="text-2xl font-black uppercase break-all">{f.value ?? '—'}</h3>
+            <div key={i} className="p-6 min-h-[9rem] flex flex-col justify-center border-4 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-transform text-black" style={{ backgroundColor: f.bg }}>
+              <p className="text-sm font-black uppercase tracking-widest text-black/60 mb-2">{f.label}</p>
+              <h3 className="text-3xl font-black uppercase break-all leading-tight">{f.value ?? '—'}</h3>
             </div>
           ))}
         </div>
-      </Panel>
+      </div>
 
       <div className="flex flex-col gap-8 xl:gap-12 w-full">
-        <Panel className={`p-8 xl:p-10 ${t_bg(dark)} flex-1`} dark={dark}>
-          <SectionTitle dark={dark}>Security</SectionTitle>
+        <div className={`p-8 xl:p-10 border-4 border-black ${t_bg(dark)} shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] flex-1`}>
+          <h3 className="text-2xl font-black uppercase mb-6 border-b-4 border-black pb-2 inline-block">Security</h3>
           {passMsg && (
             <div className={`p-4 mb-6 border-4 border-black font-black text-sm uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] ${passMsg.includes('Error') ? 'bg-[#fca5a5] text-black' : 'bg-[#a7f3d0] text-black'}`}>{passMsg}</div>
           )}
@@ -1047,7 +1116,7 @@ function ProfileTab({ identity, student, analysis, cgpa, dark }) {
             <div><label className="block text-sm font-black uppercase tracking-widest mb-2 opacity-70">Confirm Password</label><input type="password" required value={passwords.confirm} onChange={(e) => setPasswords({ ...passwords, confirm: e.target.value })} className={inputClass} placeholder="••••••••" /></div>
             <button type="submit" className="w-full py-5 bg-black text-white font-black uppercase tracking-widest text-xl border-4 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:bg-zinc-800 hover:-translate-y-1 transition-all">Update Key</button>
           </form>
-        </Panel>
+        </div>
       </div>
     </div>
   );

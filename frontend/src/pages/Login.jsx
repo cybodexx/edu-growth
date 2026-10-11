@@ -2,9 +2,13 @@ import { useState } from 'react';
 import { 
   AlertCircle, ArrowRight, ShieldCheck, 
   CheckCircle2, Key, Sparkles, Eye, EyeOff, Loader2,
-  GraduationCap, Zap
+  GraduationCap, Zap, WifiOff
 } from 'lucide-react';
 import { DEMO_CREDENTIALS, DEMO_STUDENT, DEMO_TEACHER } from '../config/identities';
+import {
+  loginStudent, registerStudent, forgotPassword,
+  normalizeLoginIdentity, saveSession, AUTH_BASE_URL,
+} from '../api/auth';
 
 const colors = {
   navy: '#0F0C1D',
@@ -32,11 +36,13 @@ export default function Login({ onLogin }) {
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [recoveredPass, setRecoveredPass] = useState('');
+  const [authDown, setAuthDown] = useState(false);
 
   const resetTransient = () => {
     setError('');
     setSuccessMsg('');
     setRecoveredPass('');
+    setAuthDown(false);
     setFullName('');
     setPasskey('');
   };
@@ -67,68 +73,139 @@ export default function Login({ onLogin }) {
 
   const passStrength = getPasswordStrength(passkey);
 
-  // The real authentication service (MongoDB + JS) will be wired up later.
-  // For now we validate against the hardcoded demo identities.
+  // ──────────────────────────────────────────────────────────────────
+  // AUTH FLOW
+  //
+  // Students are authenticated by the real backend:
+  //   POST {AUTH_BASE_URL}/api/students/login  ->  { token, student }
+  // The JWT + identity are cached in localStorage so a page refresh
+  // keeps the session.
+  //
+  // Fallbacks (so the dashboards stay reachable while developing):
+  //  * Auth server unreachable  -> demo credentials with an info banner
+  //  * Faculty role             -> demo identity (auth API is student-only)
+  // ──────────────────────────────────────────────────────────────────
+
+  const isNetworkFailure = (err) => !!err && !err.status;
+
+  const demoAccount = () =>
+    DEMO_CREDENTIALS[role].find((c) => c.identifier.toLowerCase() === identifier.trim().toLowerCase());
+
+  /** Validate against the hardcoded demo table; returns true on success. */
+  const demoSignIn = () => {
+    const account = demoAccount();
+    if (!account) {
+      setError(
+        `Unknown ${role} demo account. Try ${role === 'student' ? DEMO_STUDENT.roll_no : DEMO_TEACHER.email}.`
+      );
+      return false;
+    }
+    // Password is still optional in demo mode; if provided it must match.
+    if (passkey && passkey !== account.password) {
+      setError(`Incorrect password. Demo password is "${account.password}".`);
+      return false;
+    }
+    onLogin(role, account.identity);
+    return true;
+  };
+
+  /** Real student login via the auth backend (teacher stays on demo). */
+  const realLogin = async () => {
+    try {
+      if (role !== 'student') {
+        // Faculty endpoints don't exist in the auth service yet.
+        demoSignIn();
+        setIsLoading(false);
+        return;
+      }
+      const res = await loginStudent(identifier, passkey);
+      if (!res?.token || !res?.student) {
+        throw new Error('Login response missing token/student.');
+      }
+      const identity = normalizeLoginIdentity(res.student);
+      saveSession(res.token, identity);
+      onLogin('student', identity, res.token);
+    } catch (err) {
+      setIsLoading(false);
+      if (isNetworkFailure(err)) {
+        setAuthDown(true);
+        demoSignIn();
+      } else {
+        setError(err.message || 'Login failed.');
+      }
+    }
+  };
+
+  const realRegister = async () => {
+    try {
+      if (role !== 'student') {
+        setError('Faculty registration opens with the auth service (student API only for now).');
+        return;
+      }
+      const res = await registerStudent({
+        roll_no: identifier.trim(),
+        name: fullName.trim() || undefined,
+        password: passkey,
+        class_section: '',
+      });
+      changeMode('login');
+      setSuccessMsg(res?.message || 'Registration successful — you can now log in.');
+    } catch (err) {
+      if (isNetworkFailure(err)) {
+        setError('Auth server unreachable — registration unavailable in demo mode.');
+      } else {
+        setError(err.message || 'Registration failed.');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const realForgot = async () => {
+    try {
+      if (role !== 'student') {
+        setRecoveredPass(`Demo password: ${DEMO_CREDENTIALS.teacher[0].password}`);
+        return;
+      }
+      const res = await forgotPassword(identifier);
+      setRecoveredPass(res?.message || 'Password reset link sent to your registered contact.');
+    } catch (err) {
+      if (isNetworkFailure(err)) {
+        setAuthDown(true);
+        setRecoveredPass(`Demo password: ${DEMO_CREDENTIALS.student[0].password}`);
+      } else {
+        setError(err.message || 'Recovery failed.');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleAuth = (e) => {
     e.preventDefault();
     setError('');
     setSuccessMsg('');
     setRecoveredPass('');
+    setAuthDown(false);
     setIsLoading(true);
 
-    setTimeout(() => {
-      const id = identifier.trim();
+    const id = identifier.trim();
 
-      if (role === 'student' && (!/^\d{12}$/.test(id))) {
-        setError('Student Roll Number must be exactly 12 digits.');
-        setIsLoading(false);
-        return;
-      }
-      
-      if (role === 'teacher' && !id.includes('@')) {
-        setError('Please enter a valid faculty Email ID.');
-        setIsLoading(false);
-        return;
-      }
+    if (role === 'student' && !/^\d{12}$/.test(id)) {
+      setError('Student Roll Number must be exactly 12 digits.');
+      setIsLoading(false);
+      return;
+    }
 
-      if (mode === 'register') {
-        setError('Registration opens with the new auth service. Use the demo credentials to sign in.');
-        setIsLoading(false);
-        return;
-      }
+    if (role === 'teacher' && !id.includes('@')) {
+      setError('Please enter a valid faculty Email ID.');
+      setIsLoading(false);
+      return;
+    }
 
-      if (mode === 'forgot') {
-        setRecoveredPass(
-          role === 'student'
-            ? `Demo password: ${DEMO_CREDENTIALS.student[0].password}`
-            : `Demo password: ${DEMO_CREDENTIALS.teacher[0].password}`
-        );
-        setIsLoading(false);
-        return;
-      }
-
-      // mode === 'login'
-      const account = DEMO_CREDENTIALS[role].find(
-        (c) => c.identifier.toLowerCase() === id.toLowerCase()
-      );
-
-      if (!account) {
-        setError(
-          `Unknown ${role} demo account. Try ${role === 'student' ? DEMO_STUDENT.roll_no : DEMO_TEACHER.email}.`
-        );
-        setIsLoading(false);
-        return;
-      }
-
-      // Password is optional while auth is pending; if provided it must match.
-      if (passkey && passkey !== account.password) {
-        setError(`Incorrect password. Demo password is "${account.password}".`);
-        setIsLoading(false);
-        return;
-      }
-
-      onLogin(role, account.identity);
-    }, 500);
+    if (mode === 'register') realRegister();
+    else if (mode === 'forgot') realForgot();
+    else realLogin();
   };
 
   const fillDemo = () => {
@@ -348,6 +425,15 @@ export default function Login({ onLogin }) {
               >
                 <AlertCircle size={16} strokeWidth={2.8} className="shrink-0 mt-0.5" /> 
                 <span>{error}</span>
+              </div>
+            )}
+            {authDown && (
+              <div 
+                className="mb-4 p-3 border-[3px] text-[11px] font-black uppercase tracking-wide flex items-start gap-2"
+                style={{ backgroundColor: colors.blue, borderColor: colors.dark, color: colors.dark, boxShadow: `3px 3px 0px 0px ${colors.dark}` }}
+              >
+                <WifiOff size={16} strokeWidth={2.8} className="shrink-0 mt-0.5" /> 
+                <span>Auth server unreachable (tried {AUTH_BASE_URL}/api/students/login) — used demo identity instead.</span>
               </div>
             )}
             {successMsg && (

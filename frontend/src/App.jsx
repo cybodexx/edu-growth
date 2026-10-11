@@ -2,17 +2,21 @@ import { useState } from 'react';
 import Login from './pages/Login';
 import Student from './pages/Student';
 import Teacher from './pages/Teacher';
+import { getStoredIdentity, getToken, clearSession } from './api/auth';
 
 export default function App() {
-  // `identity` holds the hardcoded student/teacher profile coming from Login.
-  // The real auth service will replace this later.
-  const [identity, setIdentity] = useState(null);
+  // Restore a previously stored JWT session (real auth login) on reload.
+  // Demo logins (no token) stay in-memory, same as before.
+  const [identity, setIdentity] = useState(() => (getToken() ? getStoredIdentity() : null));
 
   const handleLogin = (role, selectedIdentity) => {
     setIdentity(selectedIdentity || { role });
   };
 
-  const handleLogout = () => setIdentity(null);
+  const handleLogout = () => {
+    clearSession();
+    setIdentity(null);
+  };
 
   if (!identity) {
     return <Login onLogin={handleLogin} />;

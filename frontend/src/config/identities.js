@@ -1,9 +1,11 @@
 /**
  * Hardcoded identities for the demo.
  *
- * Auth is intentionally NOT implemented yet — it will be added later by the
- * separate MongoDB + JS auth service. For now the panels run with these fixed
- * identities so the FastAPI analytics can be exercised end to end.
+ * Real student login now goes through the auth service (Express + MongoDB +
+ * JWT, see src/api/auth.js). If that server is unreachable the Login page
+ * falls back to these demo identities so the FastAPI analytics can still be
+ * exercised end to end. Faculty auth endpoints don't exist in the auth
+ * service yet, so the teacher panel always uses the demo identity below.
  *
  * Change these values to point the demo at a different student / teacher.
  */

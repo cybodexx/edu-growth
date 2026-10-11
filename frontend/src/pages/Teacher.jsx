@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Menu, X, LayoutDashboard, Search, FileSignature, Users, LogOut, Sun, Moon,
+  X, LayoutDashboard, Search, FileSignature, Users, LogOut, Sun, Moon,
   Settings, Edit3, AlertCircle, TrendingUp, CalendarCheck, ShieldAlert,
-  UserPlus, BookOpen, CheckCircle2, ChevronLeft, Loader2, RefreshCw,
+  UserPlus, BookOpen, CheckCircle2, Loader2, RefreshCw,
   Wifi, WifiOff, Trash2, Download, FileText, Target,
 } from 'lucide-react';
 import {
@@ -33,6 +33,24 @@ const SUBJECTS = [
   { key: 'cyber', label: 'Cyber Security' },
 ];
 
+/* Class dropdown is restricted to these official sections (strictly
+ * capitalized). They map onto the raw class_section values seen in the
+ * roster so filtering keeps working. */
+const SECTION_OPTIONS = [
+  { label: 'CSE-AI/ML', sections: ['CS-AI'] },
+  { label: 'CSE-DS', sections: ['CS-DS'] },
+  { label: 'IT-A', sections: ['IT-A'] },
+  { label: 'IT-B', sections: ['IT-B'] },
+];
+const matchesSection = (option, value) =>
+  !!value && option.sections.some((s) => s.toLowerCase() === String(value).trim().toLowerCase());
+
+/* Vibrant Neo-Brutalist fills */
+const BUCKET_LABELS = ['<60% · Critical', '60–75% · Warning', '75–85% · OK', '85%+ · Safe'];
+/* Risk-bucket bar colors — matches the label chips below the chart. */
+const BUCKET_COLORS = ['#fca5a5', '#fde047', '#bfdbfe', '#a7f3d0'];
+const PIE_COLORS = ['#a7f3d0', '#fde047', '#fca5a5', '#93c5fd', '#c4b5fd', '#f9a8d4'];
+
 const parseNum = (value) => {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
@@ -40,13 +58,68 @@ const parseNum = (value) => {
 
 const tooltipStyle = (dark) => ({
   backgroundColor: dark ? '#0f172a' : '#fff',
-  border: '4px solid black',
+  border: '2px solid black',
   color: dark ? '#fff' : 'black',
   fontWeight: 900,
-  boxShadow: '6px 6px 0px 0px rgba(0,0,0,1)',
+  borderRadius: 4,
+  boxShadow: '3px 3px 0px 0px rgba(0,0,0,1)',
 });
 
 const tBg = (dark) => (dark ? 'bg-[#1e293b] text-white' : 'bg-white text-black');
+
+/* Light faded watermark used behind charts & scorable blocks. */
+const Watermark = ({ children, className = 'text-[5rem]' }) => (
+  <span
+    className={`absolute inset-0 flex items-center justify-center uppercase font-black tracking-tighter opacity-[0.05] pointer-events-none select-none ${className}`}
+  >
+    {children}
+  </span>
+);
+
+/* Compact "label: value" pill used in the student profile card. */
+const InfoPill = ({ label, value, mono = false }) => (
+  <span className="inline-flex items-center gap-2 border-2 border-black bg-white px-3 py-1.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+    <span className="text-[9px] font-black uppercase tracking-widest opacity-50">{label}</span>
+    <span className={`text-sm md:text-base font-black ${mono ? 'font-mono' : ''}`}>{value}</span>
+  </span>
+);
+
+/* Elegant terminal-style report block (macOS dots bar + mono text). */
+function ReportTerminal({ id, children }) {
+  return (
+    <div className="mt-5 border-4 border-black overflow-hidden bg-[#0b1220]">
+      <div className="flex items-center gap-1.5 px-4 py-2.5 bg-[#1e293b] border-b-4 border-black">
+        <span className="w-3 h-3 rounded-full bg-[#fca5a5]" />
+        <span className="w-3 h-3 rounded-full bg-[#fde047]" />
+        <span className="w-3 h-3 rounded-full bg-[#a7f3d0]" />
+        <span className="ml-2 font-mono text-[11px] text-slate-400 truncate">mentor-report-{id}.txt</span>
+      </div>
+      <pre className={`max-h-96 min-h-[200px] overflow-auto p-5 text-sm font-mono leading-relaxed text-emerald-200 whitespace-pre-wrap ${hideScrollbar}`}>{children}</pre>
+    </div>
+  );
+}
+
+/* Prominent settings toggle switch. */
+function Toggle({ on, onChange, label, hint }) {
+  return (
+    <button
+      onClick={onChange}
+      className={`w-full flex items-center justify-between gap-4 border-2 border-black px-4 py-3.5 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 transition-all ${on ? 'bg-[#a7f3d0] text-black' : 'bg-white text-black'}`}
+    >
+      <span className="text-left">
+        <span className="block font-black uppercase text-sm">{label}</span>
+        {hint && (
+          <span className="block text-[10px] font-bold uppercase tracking-widest opacity-60 mt-0.5">{hint}</span>
+        )}
+      </span>
+      <span className={`relative w-14 h-8 border-2 border-black rounded-full transition-colors shrink-0 ${on ? 'bg-black' : 'bg-zinc-300'}`}>
+        <span
+          className={`absolute top-0.5 w-6 h-6 rounded-full border-2 border-black transition-all ${on ? 'left-6 bg-[#a7f3d0]' : 'left-0.5 bg-white'}`}
+        />
+      </span>
+    </button>
+  );
+}
 
 /* ================================================================== */
 /* MAIN WRAPPER                                                        */
@@ -74,10 +147,10 @@ export default function Teacher({ identity, onLogout }) {
   };
 
   const navItems = [
-    { id: 'overview', icon: <LayoutDashboard size={20} />, label: '1. Class Overview' },
-    { id: 'insights', icon: <Search size={20} />, label: '2. Student Insights' },
-    { id: 'internals', icon: <FileSignature size={20} />, label: '3. Assigned & Internals' },
-    { id: 'mentorship', icon: <Users size={20} />, label: '4. Mentorship Hub' },
+    { id: 'overview', icon: <LayoutDashboard size={19} />, label: '1. Class Overview' },
+    { id: 'insights', icon: <Search size={19} />, label: '2. Student Insights' },
+    { id: 'internals', icon: <FileSignature size={19} />, label: '3. Assigned & Internals' },
+    { id: 'mentorship', icon: <Users size={19} />, label: '4. Mentorship Hub' },
   ];
 
   return (
@@ -91,30 +164,34 @@ export default function Teacher({ identity, onLogout }) {
         <span className="ml-[-100px]">ANALYTICS</span>
       </div>
 
-      {/* SIDEBAR */}
-      <div className={`${t.bgCard} ${t.borderTheme} border-y-0 border-l-0 flex flex-col z-20 transition-all duration-300 ${isSidebarOpen ? 'w-72' : 'w-20'}`}>
-        <div className="h-24 border-b-4 border-black flex items-center justify-center overflow-hidden shrink-0 bg-[#fde047]">
-          <div className="bg-white border-4 border-black p-2 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] shrink-0 flex items-center justify-center">
-            <BookOpen size={28} strokeWidth={3} className="text-black" />
+      {/* SIDEBAR — the branding area below is the ONLY collapse/expand toggle */}
+      <div className={`${t.bgCard} ${t.borderTheme} border-y-0 border-l-0 flex flex-col z-20 transition-all duration-300 ${isSidebarOpen ? 'w-64' : 'w-24'}`}>
+        <button
+          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+          title={isSidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+          className="h-24 border-b-4 border-black flex items-center justify-center overflow-hidden shrink-0 bg-[#fef08a] w-full cursor-pointer hover:bg-[#fde047] transition-colors"
+        >
+          <div className="bg-white border-[3px] border-black p-2 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] shrink-0 flex items-center justify-center">
+            <BookOpen size={26} strokeWidth={3} className="text-black" />
           </div>
           {isSidebarOpen && (
-            <h1 className="font-black text-2xl uppercase text-black ml-3 tracking-tighter" style={{ textShadow: '2px 2px 0px #fff' }}>Faculty Desk</h1>
+            <h1 className="font-black text-xl uppercase text-black ml-3 tracking-tighter whitespace-nowrap">Faculty Desk</h1>
           )}
-        </div>
-        <nav className={`flex-1 py-6 flex flex-col gap-3 px-4 overflow-y-auto ${hideScrollbar}`}>
+        </button>
+        <nav className={`flex-1 py-5 flex flex-col gap-2.5 px-3 overflow-y-auto ${hideScrollbar}`}>
           {navItems.map((item) => (
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id)}
-              className={`flex items-center gap-4 p-4 font-black uppercase tracking-wider transition-all whitespace-nowrap overflow-hidden border-4 border-transparent ${
+              className={`flex items-center gap-3 p-3 font-black uppercase text-sm tracking-wider transition-all whitespace-nowrap overflow-hidden border-2 ${
                 activeTab === item.id
-                  ? 'bg-[#c4b5fd] text-black border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
-                  : `hover:border-black hover:bg-[#fef08a] hover:text-black ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`
+                  ? 'bg-[#c4b5fd] text-black border-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]'
+                  : `border-transparent hover:border-black hover:bg-[#fef08a] hover:text-black ${isDarkMode ? 'text-slate-300' : 'text-slate-600'}`
               }`}
               title={item.label}
             >
               <div className="shrink-0">{item.icon}</div>
-              {isSidebarOpen && <span className="text-sm">{item.label}</span>}
+              {isSidebarOpen && <span className="truncate">{item.label}</span>}
             </button>
           ))}
         </nav>
@@ -122,51 +199,41 @@ export default function Teacher({ identity, onLogout }) {
 
       {/* MAIN */}
       <div className="flex-1 flex flex-col h-screen overflow-hidden relative z-10">
-        <header className={`h-24 border-b-4 border-black flex items-center justify-between px-6 xl:px-10 shrink-0 bg-gradient-to-r ${isDarkMode ? 'from-slate-900 via-indigo-950 to-black' : 'from-[#93c5fd] via-[#e9d5ff] to-[#fca5a5]'}`}>
-          <div className="flex items-center gap-4">
-            <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-3 border-4 border-black bg-white text-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-all">
-              <Menu size={24} strokeWidth={3} />
-            </button>
-            {isSidebarOpen && (
-              <button onClick={() => setIsSidebarOpen(false)} className="hidden sm:flex p-3 border-4 border-black bg-[#fca5a5] text-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-all items-center justify-center" title="Close Sidebar">
-                <ChevronLeft size={24} strokeWidth={3} />
-              </button>
-            )}
-            <ApiStatusChip online={apiOnline} loading={studentsReq.loading} dark={isDarkMode} />
-          </div>
+        <header className={`h-20 border-b-4 border-black flex items-center justify-between px-6 xl:px-10 shrink-0 bg-gradient-to-r ${isDarkMode ? 'from-slate-900 via-indigo-950 to-black' : 'from-[#93c5fd] via-[#e9d5ff] to-[#fca5a5]'}`}>
+          <ApiStatusChip online={apiOnline} loading={studentsReq.loading} dark={isDarkMode} />
 
-          <div className="flex items-center gap-4">
-            <button onClick={() => setIsDarkMode(!isDarkMode)} className={`p-3 border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-all ${isDarkMode ? 'bg-[#18181b] text-[#86efac]' : 'bg-white text-black'}`}>
-              {isDarkMode ? <Moon size={24} strokeWidth={3} /> : <Sun size={24} strokeWidth={3} />}
+          <div className="flex items-center gap-4 ml-auto">
+            <button onClick={() => setIsDarkMode(!isDarkMode)} className={`p-2.5 border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 transition-all ${isDarkMode ? 'bg-[#18181b] text-[#86efac]' : 'bg-white text-black'}`}>
+              {isDarkMode ? <Moon size={22} strokeWidth={3} /> : <Sun size={22} strokeWidth={3} />}
             </button>
 
             <div className="relative">
-              <button onClick={() => setShowProfileMenu(!showProfileMenu)} className="flex items-center gap-4 bg-white border-4 border-black px-3 py-2 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-all text-black">
+              <button onClick={() => setShowProfileMenu(!showProfileMenu)} className="flex items-center gap-3 bg-white border-2 border-black px-3 py-1.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 transition-all text-black">
                 <div className="hidden sm:block text-right">
-                  <p className="font-black text-sm uppercase">{teacherShort}</p>
-                  <p className="font-bold text-[10px] uppercase tracking-widest text-zinc-500">{identity?.email}</p>
+                  <p className="font-black text-xs uppercase">{teacherShort}</p>
+                  <p className="font-bold text-[9px] uppercase tracking-widest text-zinc-500">{identity?.email}</p>
                 </div>
-                <div className="w-10 h-10 font-black flex items-center justify-center border-4 border-black bg-[#bfdbfe] text-xl">{identity?.avatar || 'RV'}</div>
+                <div className="w-9 h-9 font-black flex items-center justify-center border-2 border-black bg-[#93c5fd] text-lg">{identity?.avatar || 'RV'}</div>
               </button>
 
               {showProfileMenu && (
-                <div className={`absolute top-full right-0 mt-4 w-72 border-4 border-black ${t.bgCard} shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] z-50`}>
-                  <div className="px-6 py-6 border-b-4 border-black bg-[#93c5fd] text-black">
-                    <p className="font-black text-xl uppercase">{teacherName}</p>
-                    <p className="text-xs font-black uppercase tracking-widest mt-2">{identity?.designation || 'Faculty'}</p>
+                <div className={`absolute top-full right-0 mt-3 w-72 border-4 border-black ${t.bgCard} shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] z-50`}>
+                  <div className="px-6 py-5 border-b-4 border-black bg-[#93c5fd] text-black">
+                    <p className="font-black text-lg uppercase">{teacherName}</p>
+                    <p className="text-[10px] font-black uppercase tracking-widest mt-1.5">{identity?.designation || 'Faculty'}</p>
                   </div>
-                  <button onClick={() => { setActiveModal('profile'); setShowProfileMenu(false); }} className={`w-full text-left px-6 py-5 text-sm font-black uppercase flex items-center gap-4 hover:bg-[#fde047] hover:text-black transition-colors ${t.textMain}`}><Edit3 size={20} strokeWidth={3} /> Edit Profile</button>
-                  <button onClick={() => { setActiveModal('settings'); setShowProfileMenu(false); }} className={`w-full text-left px-6 py-5 text-sm font-black uppercase flex items-center gap-4 hover:bg-[#fde047] hover:text-black transition-colors ${t.textMain}`}><Settings size={20} strokeWidth={3} /> Settings</button>
+                  <button onClick={() => { setActiveModal('profile'); setShowProfileMenu(false); }} className={`w-full text-left px-5 py-4 text-sm font-black uppercase flex items-center gap-3 hover:bg-[#fef08a] hover:text-black transition-colors ${t.textMain}`}><Edit3 size={18} strokeWidth={3} /> Edit Profile</button>
+                  <button onClick={() => { setActiveModal('settings'); setShowProfileMenu(false); }} className={`w-full text-left px-5 py-4 text-sm font-black uppercase flex items-center gap-3 hover:bg-[#fef08a] hover:text-black transition-colors ${t.textMain}`}><Settings size={18} strokeWidth={3} /> Settings</button>
                   <div className="border-t-4 border-black"></div>
-                  <button onClick={onLogout} className="w-full text-left px-6 py-5 text-sm font-black uppercase flex items-center gap-4 bg-[#fca5a5] text-black hover:bg-red-500 transition-colors"><LogOut size={20} strokeWidth={3} /> Logout</button>
+                  <button onClick={onLogout} className="w-full text-left px-5 py-4 text-sm font-black uppercase flex items-center gap-3 bg-[#fca5a5] text-black hover:bg-[#f87171] transition-colors"><LogOut size={18} strokeWidth={3} /> Logout</button>
                 </div>
               )}
             </div>
           </div>
         </header>
 
-        <main className={`flex-1 overflow-y-auto p-6 xl:p-10 relative ${hideScrollbar}`}>
-          <div className="w-full space-y-10">
+        <main className={`flex-1 overflow-y-auto p-6 xl:p-8 relative ${hideScrollbar}`}>
+          <div className="w-full space-y-8">
             {activeTab === 'overview' && (
               <ClassOverviewTab
                 pageData={pageData}
@@ -187,7 +254,15 @@ export default function Teacher({ identity, onLogout }) {
       </div>
 
       {activeModal === 'profile' && <ProfileModal identity={identity} onClose={() => setActiveModal(null)} dark={isDarkMode} bgCard={t.bgCard} />}
-      {activeModal === 'settings' && <SettingsModal onClose={() => setActiveModal(null)} isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} bgCard={t.bgCard} />}
+      {activeModal === 'settings' && (
+        <SettingsModal
+          onClose={() => setActiveModal(null)}
+          onEditProfile={() => setActiveModal('profile')}
+          isDarkMode={isDarkMode}
+          setIsDarkMode={setIsDarkMode}
+          bgCard={t.bgCard}
+        />
+      )}
     </div>
   );
 }
@@ -196,14 +271,14 @@ export default function Teacher({ identity, onLogout }) {
 function ApiStatusChip({ online, loading, dark }) {
   if (loading) {
     return (
-      <span className={`hidden md:flex items-center gap-2 px-3 py-2 border-4 border-black text-xs font-black uppercase tracking-widest ${dark ? 'bg-[#1e293b] text-slate-200' : 'bg-white text-black'}`}>
-        <Loader2 className="animate-spin" size={15} /> Loading roster
+      <span className={`hidden md:flex items-center gap-2 px-3 py-1.5 border-2 border-black text-[10px] font-black uppercase tracking-widest shadow-[2px_2px_0px_0px_rgba(0,0,0,0.6)] ${dark ? 'bg-[#1e293b] text-slate-200' : 'bg-white text-black'}`}>
+        <Loader2 className="animate-spin" size={13} /> Loading roster
       </span>
     );
   }
   return (
-    <span className={`hidden md:flex items-center gap-2 px-3 py-2 border-4 border-black text-xs font-black uppercase tracking-widest ${online ? (dark ? 'bg-[#064e3b] text-emerald-300' : 'bg-[#a7f3d0] text-black') : 'bg-[#fca5a5] text-black'}`}>
-      {online ? <Wifi size={15} /> : <WifiOff size={15} />}
+    <span className={`hidden md:flex items-center gap-2 px-3 py-1.5 border-2 border-black text-[10px] font-black uppercase tracking-widest shadow-[2px_2px_0px_0px_rgba(0,0,0,0.6)] ${online ? (dark ? 'bg-[#064e3b] text-emerald-300' : 'bg-[#a7f3d0] text-black') : 'bg-[#fca5a5] text-black'}`}>
+      {online ? <Wifi size={13} /> : <WifiOff size={13} />}
       {online ? 'API Live' : 'API Offline'}
     </span>
   );
@@ -216,15 +291,12 @@ function ClassOverviewTab({ pageData, loading, error, reload, onInspect, dark, p
   const [section, setSection] = useState('ALL');
 
   const rows = useMemo(() => pageData.students || [], [pageData]);
-  const sections = useMemo(
-    () => Array.from(new Set(rows.map((r) => r.class_section).filter(Boolean))).sort(),
-    [rows]
-  );
 
-  const filtered = useMemo(
-    () => (section === 'ALL' ? rows : rows.filter((r) => r.class_section === section)),
-    [rows, section]
-  );
+  const filtered = useMemo(() => {
+    if (section === 'ALL') return rows;
+    const opt = SECTION_OPTIONS.find((o) => o.label === section);
+    return opt ? rows.filter((r) => matchesSection(opt, r.class_section)) : rows;
+  }, [rows, section]);
 
   const stats = useMemo(() => {
     const att = filtered.map((r) => parseNum(r.overall_attendance_pct)).filter((n) => n != null);
@@ -243,13 +315,16 @@ function ClassOverviewTab({ pageData, loading, error, reload, onInspect, dark, p
       { name: '85%+', value: att.filter((n) => n >= 85).length },
     ];
 
-    const sectionCounts = Object.entries(
-      filtered.reduce((acc, r) => {
-        const key = r.class_section || 'N/A';
-        acc[key] = (acc[key] || 0) + 1;
-        return acc;
-      }, {})
-    ).map(([name, value]) => ({ name, value }));
+    const sectionCounts = (() => {
+      const counts = SECTION_OPTIONS.map((o) => ({ name: o.label, value: 0 }));
+      rows.forEach((r) => {
+        const label = SECTION_OPTIONS.find((o) => matchesSection(o, r.class_section))?.label;
+        if (!label) return;
+        const entry = counts.find((c) => c.name === label);
+        if (entry) entry.value += 1;
+      });
+      return counts.filter((c) => c.value > 0);
+    })();
 
     const sortedCgpa = filtered
       .filter((r) => parseNum(r.previous_cgpa) != null)
@@ -264,7 +339,7 @@ function ClassOverviewTab({ pageData, loading, error, reload, onInspect, dark, p
       top5: sortedCgpa.slice(0, 5),
       bottom10: [...sortedCgpa].reverse().slice(0, 10),
     };
-  }, [filtered]);
+  }, [filtered, rows]);
 
   if (loading && !rows.length) return <LoadingBlock label="Loading student roster…" dark={dark} />;
   if (error && !rows.length) return <ErrorBlock error={error} onRetry={reload} dark={dark} />;
@@ -274,53 +349,80 @@ function ClassOverviewTab({ pageData, loading, error, reload, onInspect, dark, p
 
   return (
     <>
-      <div className={`p-8 border-4 border-black bg-[#fde047] text-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] flex flex-col md:flex-row justify-between items-start md:items-center gap-6 w-full`}>
-        <div className="flex flex-col gap-2">
-          <h1 className="text-3xl md:text-5xl font-black tracking-tighter uppercase leading-none">Class Overview</h1>
-          <p className="font-black text-sm uppercase tracking-widest text-gray-800">
+      <div className={`p-6 border-4 border-black bg-[#fef08a] text-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] flex flex-col md:flex-row justify-between items-start md:items-center gap-5 w-full`}>
+        <div className="flex flex-col gap-1.5">
+          <h1 className="text-2xl md:text-4xl font-black tracking-tighter uppercase leading-none">Class Overview</h1>
+          <p className="font-extrabold text-sm uppercase tracking-widest text-black/80">
             Live roster · {pageData.total ?? rows.length} students in DB
           </p>
         </div>
-        <div className="flex items-center gap-4 bg-white border-4 border-black p-2 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-          <span className="font-black uppercase tracking-widest text-xs ml-2">Section:</span>
-          <select value={section} onChange={(e) => setSection(e.target.value)} className="bg-[#bfdbfe] border-2 border-black p-2 font-black text-lg outline-none cursor-pointer">
+        <div className="flex items-center gap-3 bg-white border-4 border-black p-1.5 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
+          <span className="font-black uppercase tracking-widest text-[10px] ml-1.5">Section:</span>
+          <select value={section} onChange={(e) => setSection(e.target.value)} className="bg-[#93c5fd] border-2 border-black p-2 font-black uppercase text-base outline-none cursor-pointer">
             <option value="ALL">ALL</option>
-            {sections.map((s) => <option key={s} value={s}>{s}</option>)}
+            {SECTION_OPTIONS.map((o) => <option key={o.label} value={o.label}>{o.label}</option>)}
           </select>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6 w-full">
-        <MetricCard title="Avg. Attendance" value={stats.avgAtt != null ? `${fmt(stats.avgAtt, 1)}%` : '—'} accent="#a7f3d0" icon={<CalendarCheck size={110} />} />
-        <MetricCard title="Class Avg CGPA" value={stats.avgCgpa != null ? fmt(stats.avgCgpa, 2) : '—'} accent="#93c5fd" icon={<TrendingUp size={110} />} footnote="From previous_cgpa" />
-        <MetricCard title="At Risk (proxy)" value={stats.atRisk} accent="#fca5a5" icon={<ShieldAlert size={110} />} footnote="Attendance<75% or CGPA<6" />
-        <MetricCard title="Roster Page" value={`${rows.length}`} accent="#e9d5ff" icon={<Users size={110} />} footnote={`offset ${page.offset}`} />
+      {/* Stat cards — compact 2/4 grid */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 w-full">
+        <MetricCard className="w-full" title="Avg. Attendance" value={stats.avgAtt != null ? `${fmt(stats.avgAtt, 1)}%` : '—'} accent="#a7f3d0" icon={<CalendarCheck size={96} />} />
+        <MetricCard className="w-full" title="Class Avg CGPA" value={stats.avgCgpa != null ? fmt(stats.avgCgpa, 2) : '—'} accent="#93c5fd" icon={<TrendingUp size={96} />} footnote="From previous_cgpa" />
+        <MetricCard className="w-full" title="At Risk (proxy)" value={stats.atRisk} accent="#fca5a5" icon={<ShieldAlert size={96} />} footnote="Attendance<75% | CGPA<6" />
+        <MetricCard className="w-full" title="Roster Page" value={`${rows.length}`} accent="#e9d5ff" icon={<Users size={96} />} footnote={`offset ${page.offset}`} />
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 w-full">
-        <Panel className={`xl:col-span-2 p-8 ${tBg(dark)}`} dark={dark}>
+      {/* Charts — side by side on large screens */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 w-full">
+        <Panel className={`p-5 ${tBg(dark)} relative`} dark={dark}>
           <SectionTitle dark={dark}>Attendance Distribution</SectionTitle>
-          <div className="h-64">
+          <div className="relative h-80">
+            <Watermark className="text-[4rem]">Attendance %</Watermark>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={stats.buckets}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={dark ? '#3f3f46' : '#e5e7eb'} />
-                <XAxis dataKey="name" stroke={dark ? '#fff' : '#000'} axisLine={{ strokeWidth: 4 }} tick={{ fontWeight: 900 }} />
-                <YAxis domain={[0, 'auto']} stroke={dark ? '#fff' : '#000'} axisLine={{ strokeWidth: 4 }} tick={{ fontWeight: 900 }} allowDecimals={false} />
-                <Tooltip cursor={{ fill: 'rgba(0,0,0,0.08)' }} contentStyle={tooltipStyle(dark)} />
-                <Bar dataKey="value" fill="#93c5fd" stroke="#000" strokeWidth={4} />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={dark ? '#3f3f46' : '#e2e8f0'} />
+                <XAxis dataKey="name" stroke={dark ? '#fff' : '#000'} axisLine={{ strokeWidth: 3 }} tick={{ fontWeight: 900, fontSize: 13 }} />
+                <YAxis label={{ value: 'Students', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle', fontWeight: 900, fill: dark ? '#fff' : '#000', fontSize: 11 } }} domain={[0, 'auto']} stroke={dark ? '#fff' : '#000'} axisLine={{ strokeWidth: 3 }} tick={{ fontWeight: 900 }} allowDecimals={false} />
+                <Tooltip cursor={{ fill: 'rgba(0,0,0,0.06)' }} contentStyle={tooltipStyle(dark)} />
+                <Bar dataKey="value" fill={BUCKET_COLORS[0]} stroke="#000" strokeWidth={2} radius={[2, 2, 0, 0]} barSize={40}>
+                  {stats.buckets.map((_, i) => (
+                    <Cell key={i} fill={BUCKET_COLORS[i % BUCKET_COLORS.length]} />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            {BUCKET_LABELS.map((label, i) => (
+              <span key={i} className="flex items-center gap-1.5 border-2 border-black bg-white px-2 py-1 text-black font-black uppercase text-[10px] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                <span className="w-2.5 h-2.5 border border-black shrink-0" style={{ backgroundColor: BUCKET_COLORS[i % BUCKET_COLORS.length] }} />
+                {label}
+              </span>
+            ))}
+          </div>
         </Panel>
 
-        <Panel className={`p-8 ${tBg(dark)} flex flex-col`} dark={dark}>
+        <Panel className={`p-5 ${tBg(dark)} flex flex-col`} dark={dark}>
           <SectionTitle dark={dark}>Sections</SectionTitle>
-          <div className="flex-1 min-h-[200px]">
+          <div className="relative flex-1 min-h-[200px]">
+            <Watermark className="text-[3rem]">Sections</Watermark>
             {stats.sectionCounts.length ? (
               <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={stats.sectionCounts} innerRadius={55} outerRadius={90} dataKey="value" stroke="#000" strokeWidth={4} paddingAngle={2}>
-                    {stats.sectionCounts.map((_, i) => <Cell key={i} fill={['#a7f3d0', '#fef08a', '#fca5a5', '#bfdbfe', '#e9d5ff', '#c4b5fd'][i % 6]} />)}
+                <PieChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+                  <Pie
+                    data={stats.sectionCounts}
+                    innerRadius={48}
+                    outerRadius={74}
+                    dataKey="value"
+                    fill={dark ? '#fff' : '#000'}
+                    stroke="#000"
+                    strokeWidth={2.5}
+                    paddingAngle={2}
+                    labelLine={dark ? { stroke: '#93c5fd', strokeWidth: 2 } : { stroke: '#000', strokeWidth: 2 }}
+                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                  >
+                    {stats.sectionCounts.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
                   </Pie>
                   <Tooltip contentStyle={tooltipStyle(dark)} />
                 </PieChart>
@@ -328,45 +430,69 @@ function ClassOverviewTab({ pageData, loading, error, reload, onInspect, dark, p
             ) : (
               <EmptyBlock dark={dark} message="No section data." />
             )}
+            {stats.sectionCounts.length > 0 && (
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none">
+                <div className="text-center">
+                  <p className={`font-black text-4xl leading-none ${dark ? 'text-white' : 'text-black'}`}>
+                    {stats.sectionCounts.reduce((a, b) => a + b.value, 0)}
+                  </p>
+                  <p className={`font-black uppercase tracking-widest text-[10px] mt-1 ${dark ? 'text-white/60' : 'text-black/60'}`}>Students</p>
+                </div>
+              </div>
+            )}
           </div>
+          {stats.sectionCounts.length > 0 && (
+            <div className="mt-4 grid grid-cols-2 gap-1.5">
+              {stats.sectionCounts.map((s, i) => (
+                <div key={s.name} className="flex items-center gap-1.5 border-2 border-black bg-white px-2 py-1.5 text-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                  <span className="w-3 h-3 border-2 border-black shrink-0" style={{ backgroundColor: PIE_COLORS[i % PIE_COLORS.length] }} />
+                  <span className="font-black uppercase text-[11px] tracking-wider truncate">{s.name}</span>
+                  <span className="ml-auto font-black text-sm">{s.value}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </Panel>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 w-full">
-        <Panel className={`p-6 ${tBg(dark)} max-h-96 overflow-y-auto ${hideScrollbar}`} dark={dark}>
-          <h3 className="text-lg font-black uppercase tracking-wider mb-4 border-b-4 border-black pb-2 text-emerald-500 sticky top-0 bg-inherit z-10">⭐ Top 5 (previous CGPA)</h3>
-          <div className="space-y-2">
+      {/* Top 5 / Bottom 10 — constrained width, bigger text */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 max-w-6xl mx-auto w-full">
+        <Panel className={`p-5 ${tBg(dark)}`} dark={dark}>
+          <h3 className="text-base xl:text-lg font-black uppercase tracking-wider pb-2 border-b-4 border-black text-emerald-600">⭐ Top 5 (Previous CGPA)</h3>
+          <div className={`mt-3.5 space-y-2 max-h-80 overflow-y-auto pr-1.5 ${hideScrollbar}`}>
             {stats.top5.length ? stats.top5.map((stu, i) => (
-              <button key={i} onClick={() => onInspect(stu.roll_no)} className="w-full text-left flex justify-between items-center bg-[#a7f3d0] text-black border-2 border-black p-2 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 transition-transform">
-                <span className="font-black text-sm truncate">{i + 1}. {stu.full_name || stu.roll_no}</span>
-                <span className="font-black text-xs bg-white border-2 border-black px-2 py-1 shrink-0 ml-2">{fmt(stu.previous_cgpa, 2)}</span>
+              <button key={i} onClick={() => onInspect(stu.roll_no)} className="w-full text-left flex items-center gap-3 bg-[#a7f3d0] text-black border-2 border-black px-3 py-2.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 transition-transform">
+                <span className="w-7 h-7 shrink-0 bg-black text-white font-black text-sm flex items-center justify-center">{i + 1}</span>
+                <span className="flex-1 font-black text-base lg:text-lg truncate">{stu.full_name || stu.roll_no}</span>
+                <span className="font-black text-base bg-white border-2 border-black px-3 py-0.5 shrink-0 ml-1">{fmt(stu.previous_cgpa, 2)}</span>
               </button>
             )) : <EmptyBlock dark={dark} message="No CGPA column in roster." />}
           </div>
         </Panel>
 
-        <Panel className={`p-6 ${tBg(dark)} max-h-96 overflow-y-auto ${hideScrollbar}`} dark={dark}>
-          <h3 className="text-lg font-black uppercase tracking-wider mb-4 border-b-4 border-black pb-2 text-red-500 sticky top-0 bg-inherit z-10">⚠️ Bottom 10 (previous CGPA)</h3>
-          <div className="space-y-2">
+        <Panel className={`p-5 ${tBg(dark)}`} dark={dark}>
+          <h3 className="text-base xl:text-lg font-black uppercase tracking-wider pb-2 border-b-4 border-black text-red-500">⚠️ Bottom 10 (Previous CGPA)</h3>
+          <div className={`mt-3.5 space-y-2 max-h-80 overflow-y-auto pr-1.5 ${hideScrollbar}`}>
             {stats.bottom10.length ? stats.bottom10.map((stu, i) => (
-              <button key={i} onClick={() => onInspect(stu.roll_no)} className="w-full text-left flex justify-between items-center bg-[#fca5a5] text-black border-2 border-black p-2 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 transition-transform">
-                <span className="font-black text-sm truncate">{i + 1}. {stu.full_name || stu.roll_no}</span>
-                <span className="font-black text-xs bg-white border-2 border-black px-2 py-1 shrink-0 ml-2">{fmt(stu.previous_cgpa, 2)}</span>
+              <button key={i} onClick={() => onInspect(stu.roll_no)} className="w-full text-left flex items-center gap-3 bg-[#fca5a5] text-black border-2 border-black px-3 py-2.5 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 transition-transform">
+                <span className="w-7 h-7 shrink-0 bg-black text-white font-black text-sm flex items-center justify-center">{i + 1}</span>
+                <span className="flex-1 font-black text-base lg:text-lg truncate">{stu.full_name || stu.roll_no}</span>
+                <span className="font-black text-base bg-white border-2 border-black px-3 py-0.5 shrink-0 ml-1">{fmt(stu.previous_cgpa, 2)}</span>
               </button>
             )) : <EmptyBlock dark={dark} message="No CGPA column in roster." />}
           </div>
         </Panel>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-4 border-4 border-black p-4 bg-[#e9d5ff] text-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]">
-        <p className="font-black uppercase tracking-widest text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-4 border-4 border-black p-4 bg-[#e9d5ff] text-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+        <p className="font-black uppercase tracking-widest text-xs">
           Showing {page.offset + 1}–{page.offset + rows.length} of {pageData.total ?? '?'}
         </p>
-        <div className="flex gap-3">
-          <button disabled={!canPrev} onClick={() => setPage((p) => ({ ...p, offset: Math.max(0, p.offset - p.limit) }))} className="px-5 py-2 font-black uppercase border-4 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] disabled:opacity-40 hover:-translate-y-0.5 transition-transform">
+        <div className="flex gap-2.5">
+          <button disabled={!canPrev} onClick={() => setPage((p) => ({ ...p, offset: Math.max(0, p.offset - p.limit) }))} className="px-4 py-2 font-black uppercase text-sm border-2 border-black bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] disabled:opacity-40 hover:-translate-y-0.5 transition-transform">
             Prev
           </button>
-          <button disabled={!canNext} onClick={() => setPage((p) => ({ ...p, offset: p.offset + p.limit }))} className="px-5 py-2 font-black uppercase border-4 border-black bg-[#fef08a] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] disabled:opacity-40 hover:-translate-y-0.5 transition-transform">
+          <button disabled={!canNext} onClick={() => setPage((p) => ({ ...p, offset: p.offset + p.limit }))} className="px-4 py-2 font-black uppercase text-sm border-2 border-black bg-[#fef08a] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] disabled:opacity-40 hover:-translate-y-0.5 transition-transform">
             Next
           </button>
         </div>
@@ -411,21 +537,26 @@ function StudentInsightsTab({ dark, initialQuery }) {
     load(query);
   };
 
-  const inputClass = `flex-1 border-4 border-black p-4 text-xl font-black focus:bg-[#fef08a] outline-none shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] ${dark ? 'bg-[#0f172a] text-white' : 'bg-[#f4f4f5] text-black'}`;
-
   return (
-    <div className="w-full space-y-10">
-      <div className={`p-8 border-4 border-black bg-[#93c5fd] text-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]`}>
-        <h2 className="text-4xl font-black uppercase tracking-tight mb-2">Student Insights Engine</h2>
-        <p className="text-sm font-black uppercase tracking-widest text-black/60">
+    <div className="w-full space-y-6">
+      <div className={`p-6 border-4 border-black bg-[#93c5fd] text-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]`}>
+        <h2 className="text-2xl md:text-3xl font-black uppercase tracking-tight mb-1.5">Student Insights Engine</h2>
+        <p className="text-xs font-extrabold uppercase tracking-widest text-black/70">
           Search by roll number OR full name (mentor routes accept both).
         </p>
       </div>
 
-      <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-6">
-        <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="e.g. 210029023375 or Aarav Rao" className={inputClass} />
-        <button type="submit" disabled={loading} className="px-10 py-4 bg-[#a7f3d0] text-black font-black uppercase text-xl border-4 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-none transition-all disabled:opacity-60 flex items-center gap-3 justify-center">
-          {loading ? <Loader2 className="animate-spin" size={22} /> : <Search size={22} />} Fetch
+      {/* Compact, centered search bar */}
+      <form onSubmit={handleSearch} className="w-full max-w-xl mx-auto flex flex-col sm:flex-row gap-3">
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="E.G. 210029023375 OR AARAV RAO"
+          className={`flex-1 border-2 border-black p-3 text-base font-black rounded-sm focus:bg-[#fef08a] outline-none shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] ${dark ? 'bg-[#0f172a] text-white' : 'bg-white text-black'}`}
+        />
+        <button type="submit" disabled={loading} className="px-6 py-3 bg-[#a7f3d0] text-black font-black uppercase text-sm border-2 border-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-none transition-all disabled:opacity-60 flex items-center gap-2 justify-center">
+          {loading ? <Loader2 className="animate-spin" size={18} /> : <Search size={18} />} Fetch
         </button>
       </form>
 
@@ -443,9 +574,23 @@ function DossierView({ dossier, dark }) {
   const { analysis, student, cgpa, id } = dossier;
   const metrics = analysis.academic_metrics || {};
   const weak = weakAreas(analysis);
-  const subjectScores = (analysis.subjects || []).map((s) => ({ subject: (s.subject || '').toUpperCase(), score: parseNum(s.score_pct) ?? 0, status: s.status }));
   const fullName = student?.full_name || analysis.full_name || id;
   const section = student?.class_section || analysis.class_section;
+
+  const subjectCards = (analysis.subjects || [])
+    .filter((s) => s && (s.score_pct != null || Array.isArray(s.units)))
+    .map((s) => ({
+      label: s.label || s.subject || 'Subject',
+      score: parseNum(s.score_pct),
+      status: s.status || 'ok',
+      units: Array.isArray(s.units) ? s.units : [],
+      components: s.components || {},
+    }));
+
+  const primaryMentor =
+    weak[0]?.mentor?.name ||
+    (analysis.recommendations || []).find((r) => r.mentor)?.mentor ||
+    (analysis.subjects || []).find((s) => s.mentor?.name)?.mentor?.name;
 
   const [report, setReport] = useState(null);
   const [reportErr, setReportErr] = useState(null);
@@ -468,110 +613,154 @@ function DossierView({ dossier, dark }) {
     URL.revokeObjectURL(url);
   };
 
+  const unitPill = (label, value, status) => (
+    <span
+      className="inline-flex items-center gap-1 border-2 border-black px-2.5 py-1 text-xs font-black uppercase tracking-wide shadow-[1px_1px_0px_0px_rgba(0,0,0,0.8)]"
+      style={{ backgroundColor: statusColor(status) }}
+    >
+      {label}: {value != null ? `${fmt(value, 0)}%` : '—'}
+    </span>
+  );
+
   return (
-    <div className="space-y-10">
-      <div className={`p-8 border-4 border-black text-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] flex flex-col md:flex-row justify-between items-start md:items-center gap-6`} style={{ backgroundColor: weak.length ? '#fca5a5' : '#a7f3d0' }}>
-        <div>
-          <h3 className="text-4xl font-black uppercase">{fullName}</h3>
-          <p className="font-black text-sm mt-3 bg-white border-4 border-black inline-block px-3 py-1 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-            {id} {section ? `| ${section}` : ''} | {dossier.source === 'mentor' ? 'mentor engine' : 'risk engine'}
-          </p>
-        </div>
-        <div className="flex flex-col gap-2 items-start md:items-end">
-          <RiskBadge riskLevel={analysis.risk_level} />
-          {analysis.priority_rank != null && (
-            <span className="bg-black text-white px-3 py-1 font-black uppercase tracking-widest text-[10px]">Priority #{analysis.priority_rank}</span>
-          )}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-        <MetricCard title="Attendance" value={metrics.overall_attendance_pct != null ? `${fmt(metrics.overall_attendance_pct, 1)}%` : '—'} accent="#a7f3d0" icon={<CalendarCheck size={110} />} />
-        <MetricCard title="Average Score" value={metrics.average_percentage != null ? `${fmt(metrics.average_percentage, 1)}%` : '—'} accent="#bfdbfe" icon={<BookOpen size={110} />} />
-        <MetricCard title="Predicted CGPA" value={cgpa?.predicted_grade != null ? fmt(cgpa.predicted_grade, 2) : '—'} accent="#e9d5ff" footnote={cgpa?.confidence_display} icon={<TrendingUp size={110} />} />
-        <MetricCard title="Weak Areas" value={weak.length} accent="#fef08a" icon={<Target size={110} />} />
-      </div>
-
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-        <Panel className={`p-8 ${tBg(dark)}`} dark={dark}>
-          <SectionTitle dark={dark}>Subject Scores</SectionTitle>
-          {subjectScores.length ? (
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={subjectScores}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={dark ? '#3f3f46' : '#e4e4e7'} />
-                  <XAxis dataKey="subject" stroke={dark ? '#fff' : '#000'} tick={{ fontWeight: 900, fontSize: 10 }} axisLine={{ strokeWidth: 4 }} />
-                  <YAxis domain={[0, 100]} stroke={dark ? '#fff' : '#000'} tick={{ fontWeight: 900 }} axisLine={{ strokeWidth: 4 }} />
-                  <Tooltip cursor={{ fill: 'rgba(0,0,0,0.08)' }} contentStyle={tooltipStyle(dark)} />
-                  <Bar dataKey="score" stroke="#000" strokeWidth={4}>
-                    {subjectScores.map((s, i) => <Cell key={i} fill={statusColor(s.status)} />)}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          ) : <EmptyBlock dark={dark} message="No subject detail available." />}
-        </Panel>
-
-        <Panel className={`p-8 ${tBg(dark)}`} dark={dark}>
-          <SectionTitle dark={dark}>Weak Areas & Mentors</SectionTitle>
-          <div className={`space-y-4 max-h-72 overflow-y-auto pr-2 ${hideScrollbar}`}>
-            {weak.length ? weak.map((w, i) => {
-              const focus = w.weak_units?.map((u) => u.unit).join(', ') || (w.weak_parts || []).join(', ') || w.lowest_unit || 'Overall';
-              return (
-                <div key={i} className="border-4 border-black p-4 text-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]" style={{ backgroundColor: '#fef08a' }}>
-                  <div className="flex justify-between items-center border-b-2 border-black pb-2 mb-2">
-                    <span className="font-black uppercase">{w.displayName}</span>
-                    <span className="text-xs font-black bg-black text-white px-2 py-1">{fmt(w.score_pct, 1)}%</span>
-                  </div>
-                  <p className="text-xs font-black uppercase tracking-widest opacity-60">Weak: {focus}</p>
-                  <p className="text-sm font-bold mt-1">Mentor: {w.mentor?.name || '—'} {w.mentor?.rating != null ? `(⭐ ${fmt(w.mentor.rating, 1)})` : ''}</p>
-                  {w.peer_mentor?.name && <p className="text-sm font-bold">Peer: {w.peer_mentor.name} {w.peer_mentor.score_pct != null ? `· ${fmt(w.peer_mentor.score_pct, 1)}%` : ''}</p>}
-                  {w.suggested_action && <p className="text-xs font-bold mt-1 opacity-80">{w.suggested_action}</p>}
-                </div>
-              );
-            }) : <EmptyBlock dark={dark} message="No weak areas — student is healthy." />}
+    <div className="space-y-6">
+      {/* Compact profile card */}
+      <div className={`p-5 border-4 border-black bg-white text-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]`}>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h3 className="text-2xl md:text-3xl font-black uppercase tracking-tight leading-none">{fullName}</h3>
+            <p className="text-[9px] font-black uppercase tracking-widest opacity-50 mt-1.5">
+              {dossier.source === 'mentor' ? 'Mentor Engine' : 'Risk Engine'}
+            </p>
           </div>
-        </Panel>
+          <div className="flex items-center gap-2 shrink-0">
+            <RiskBadge riskLevel={analysis.risk_level} />
+            {analysis.priority_rank != null && (
+              <span className="inline-block border-2 border-black bg-slate-900 text-white font-black uppercase tracking-widest text-[10px] px-2 py-0.5">{`P#${analysis.priority_rank}`}</span>
+            )}
+          </div>
+        </div>
+        <div className="mt-4 flex flex-wrap items-center gap-2.5">
+          <InfoPill label="Roll" value={id} mono />
+          <InfoPill label="Branch" value={section || '—'} />
+          <InfoPill label="Mentor" value={primaryMentor || 'Auto-assigned'} />
+        </div>
       </div>
+
+      {/* Stat cards — compact 2/4 grid */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 w-full">
+        <MetricCard className="w-full" title="Attendance" value={metrics.overall_attendance_pct != null ? `${fmt(metrics.overall_attendance_pct, 1)}%` : '—'} accent="#a7f3d0" icon={<CalendarCheck size={96} />} />
+        <MetricCard className="w-full" title="Average Score" value={metrics.average_percentage != null ? `${fmt(metrics.average_percentage, 1)}%` : '—'} accent="#93c5fd" icon={<BookOpen size={96} />} />
+        <MetricCard className="w-full" title="Predicted CGPA" value={cgpa?.predicted_grade != null ? fmt(cgpa.predicted_grade, 2) : '—'} accent="#e9d5ff" footnote={cgpa?.confidence_display} icon={<TrendingUp size={96} />} />
+        <MetricCard className="w-full" title="Weak Areas" value={weak.length} accent="#fef08a" icon={<Target size={96} />} />
+      </div>
+
+      {/* Subject scoreboard — compact cards + readable unit pills */}
+      <Panel className={`p-5 ${tBg(dark)}`} dark={dark}>
+        <SectionTitle dark={dark}>Subject Scoreboard</SectionTitle>
+        {subjectCards.length ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+            {subjectCards.map((card, i) => (
+              <div key={i} className="relative overflow-hidden border-2 border-black bg-white text-black p-4 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
+                <span className="absolute -right-1 -top-4 text-[4.5rem] leading-none font-black opacity-[0.07] pointer-events-none select-none">
+                  {card.score != null ? `${fmt(card.score, 0)}%` : ''}
+                </span>
+                <div className="relative flex items-center justify-between gap-2">
+                  <p className="text-sm font-black uppercase tracking-wider truncate">{card.label}</p>
+                  <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 border border-black shrink-0" style={{ backgroundColor: statusColor(card.status) }}>{card.status || '—'}</span>
+                </div>
+                <p className="relative text-2xl md:text-3xl font-black tracking-tighter mt-2">
+                  {card.score != null ? `${fmt(card.score, 1)}%` : '—'}
+                </p>
+                <p className="relative text-[10px] font-black uppercase tracking-widest text-black/50 mt-2 mb-1.5">Unit Breakdown</p>
+                <div className="relative flex flex-wrap gap-1.5">
+                  {card.units.length
+                    ? card.units.map((u) => unitPill(u.unit, u.score_pct, u.status))
+                    : (
+                      <>
+                        {unitPill('ST1', card.components.st1_pct, 'ok')}
+                        {unitPill('ST2', card.components.st2_pct, 'ok')}
+                        {unitPill('PUT', card.components.put_pct, 'ok')}
+                      </>
+                    )}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : <EmptyBlock dark={dark} message="No subject detail available." />}
+      </Panel>
+
+      {/* Weak areas & mentors — big, readable detail blocks */}
+      <Panel className={`p-5 ${tBg(dark)}`} dark={dark}>
+        <SectionTitle dark={dark}>Weak Areas & Mentors</SectionTitle>
+        <div className="space-y-4">
+          {weak.length ? weak.map((w, i) => {
+            const focus = w.weak_units?.map((u) => u.unit).join(', ') || (w.weak_parts || []).join(', ') || w.lowest_unit || 'Overall';
+            return (
+              <div key={i} className="border-4 border-black p-5 text-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]" style={{ backgroundColor: '#fef08a' }}>
+                <div className="flex justify-between items-center border-b-4 border-black pb-2 mb-2">
+                  <span className="font-black text-lg md:text-xl uppercase">{w.displayName}</span>
+                  <span className="text-base font-black bg-black text-white px-3 py-1">{fmt(w.score_pct, 1)}%</span>
+                </div>
+                <p className="font-extrabold text-lg md:text-xl uppercase tracking-wide opacity-90">Target Weakness: {focus}</p>
+                <div className="mt-2.5 space-y-1.5">
+                  <p className="text-xl md:text-2xl font-black">
+                    Assigned Mentor: {w.mentor?.name || '—'} {w.mentor?.rating != null ? `(⭐ ${fmt(w.mentor.rating, 1)})` : ''}
+                  </p>
+                  {w.peer_mentor?.name && (
+                    <p className="text-base font-bold">Peer: {w.peer_mentor.name} {w.peer_mentor.score_pct != null ? `· ${fmt(w.peer_mentor.score_pct, 1)}%` : ''}</p>
+                  )}
+                </div>
+                {w.reason && (
+                  <div className="mt-3 bg-black text-[#fde047] border-2 border-black p-4">
+                    <p className="text-xs font-black uppercase tracking-widest opacity-80">AI Reason</p>
+                    <p className="text-base font-bold mt-1.5 leading-snug">{w.reason}</p>
+                  </div>
+                )}
+                {w.suggested_action && <p className="text-sm font-bold mt-2 opacity-80">{w.suggested_action}</p>}
+              </div>
+            );
+          }) : <EmptyBlock dark={dark} message="No weak areas — student is healthy." />}
+        </div>
+      </Panel>
 
       {analysis.recommendations?.length > 0 && (
-        <Panel className={`p-8 ${tBg(dark)}`} dark={dark}>
+        <Panel className={`p-5 ${tBg(dark)}`} dark={dark}>
           <SectionTitle dark={dark}>Recommendations</SectionTitle>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {analysis.recommendations.map((rec, i) => (
-              <div key={i} className="border-4 border-black p-5 text-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] bg-white">
-                <div className="flex justify-between items-center mb-2 border-b-2 border-black pb-2">
-                  <span className="font-black uppercase">{(rec.subject || rec.type || '').toUpperCase()}</span>
-                  <span className="text-[10px] font-black bg-black text-white px-2 py-1">P{rec.priority ?? '-'}</span>
+              <div key={i} className="border-2 border-black p-6 text-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] bg-white">
+                <div className="flex justify-between items-center mb-3 border-b-2 border-black pb-3">
+                  <span className="font-black uppercase text-2xl tracking-tight">{(rec.subject || rec.type || '').toUpperCase()}</span>
+                  <span className="text-xs font-black bg-black text-white px-2.5 py-1">{`P${rec.priority ?? '-'}`}</span>
                 </div>
-                <p className="font-bold text-sm">{rec.action || rec.focus}</p>
-                <p className="text-xs font-black uppercase tracking-widest mt-2 opacity-60">Mentor: {rec.mentor || '—'}</p>
-                {rec.peer_mentor && <p className="text-xs font-black uppercase tracking-widest opacity-60">Peer: {rec.peer_mentor}</p>}
+                <p className="font-bold text-base leading-snug">{rec.action || rec.focus}</p>
+                <p className="text-sm font-black uppercase tracking-widest mt-3 opacity-70">Mentor: {rec.mentor || '—'}</p>
+                {rec.peer_mentor && <p className="text-sm font-black uppercase tracking-widest opacity-70">Peer: {rec.peer_mentor}</p>}
               </div>
             ))}
           </div>
         </Panel>
       )}
 
-      <Panel className={`p-8 ${tBg(dark)}`} dark={dark}>
-        <div className="flex flex-wrap items-center justify-between gap-4">
+      {/* Printable report — big prominent CTA + terminal block */}
+      <Panel className={`p-5 ${tBg(dark)}`} dark={dark}>
+        <div className="flex flex-wrap items-center justify-between gap-5">
           <div>
-            <h4 className="text-xl font-black uppercase flex items-center gap-2"><FileText size={20} /> Printable Report</h4>
-            <p className="text-xs font-bold opacity-60">Generated from GET /api/v1/mentor/{id}/report</p>
+            <h4 className="text-xl font-black uppercase flex items-center gap-2.5"><FileText size={24} /> Printable Report</h4>
+            <p className="text-[11px] font-bold opacity-60 mt-1">Generated from GET /api/v1/mentor/{id}/report</p>
           </div>
-          <div className="flex gap-3">
-            <button onClick={loadReport} disabled={reportBusy} className="flex items-center gap-2 bg-[#fde047] text-black font-black uppercase text-sm px-4 py-3 border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-transform disabled:opacity-60">
-              {reportBusy ? <Loader2 className="animate-spin" size={18} /> : <RefreshCw size={18} />} Generate
+          <div className="flex flex-wrap gap-3">
+            <button onClick={loadReport} disabled={reportBusy} className="flex items-center gap-2.5 bg-[#fef08a] text-black font-black uppercase text-lg px-9 py-4 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-none transition-all disabled:opacity-60">
+              {reportBusy ? <Loader2 className="animate-spin" size={22} /> : <RefreshCw size={22} />} Generate
             </button>
-            <button onClick={download} disabled={!report} className="flex items-center gap-2 bg-[#bfdbfe] text-black font-black uppercase text-sm px-4 py-3 border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-transform disabled:opacity-40">
-              <Download size={18} /> Download
+            <button onClick={download} disabled={!report} className="flex items-center gap-2.5 bg-[#93c5fd] text-black font-black uppercase text-lg px-8 py-4 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 transition-all disabled:opacity-40">
+              <Download size={22} /> Download
             </button>
           </div>
         </div>
         {reportErr && <p className="mt-4 text-sm font-bold text-red-500">{reportErr.message}</p>}
-        {report && (
-          <pre className={`mt-5 p-5 border-4 border-black text-xs font-mono whitespace-pre-wrap overflow-auto max-h-72 ${dark ? 'bg-[#0b1220] text-slate-200' : 'bg-[#0b1220] text-emerald-200'}`}>{report}</pre>
-        )}
+        {report && <ReportTerminal id={id}>{report}</ReportTerminal>}
       </Panel>
     </div>
   );
@@ -654,40 +843,45 @@ function InternalsTab({ dark }) {
     }
   };
 
-  const inputClass = 'w-20 border-2 border-black p-2 font-black text-center focus:bg-[#fef08a] outline-none text-black bg-white';
+  const inputClass = 'w-24 border-2 border-black p-2.5 font-black text-base text-center focus:bg-[#fef08a] outline-none text-black bg-white';
 
   return (
-    <div className="w-full space-y-8">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 border-b-4 border-black pb-4">
+    <div className="w-full space-y-6">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-5 border-b-4 border-black pb-4">
         <div>
-          <h2 className="text-4xl md:text-5xl font-black uppercase tracking-tight mb-2">Manage Internals</h2>
-          <p className={`text-sm font-black uppercase tracking-widest ${dark ? 'text-zinc-400' : 'text-zinc-500'}`}>
+          <h2 className="text-2xl md:text-4xl font-black uppercase tracking-tight mb-1.5">Manage Internals</h2>
+          <p className={`text-xs font-extrabold uppercase tracking-widest ${dark ? 'text-zinc-400' : 'text-zinc-500'}`}>
             Saves via PUT /api/v1/students/&#123;roll_no&#125;
           </p>
         </div>
-        <div className="flex items-center gap-3 bg-white border-4 border-black p-2 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-          <span className="font-black uppercase tracking-widest text-xs ml-2 text-black">Subject:</span>
-          <select value={subject} onChange={(e) => { setSubject(e.target.value); setEdits({}); }} className="bg-[#bfdbfe] border-2 border-black p-2 font-black text-lg outline-none cursor-pointer text-black">
+        <div className="flex items-center gap-3 bg-white border-4 border-black p-1.5 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]">
+          <span className="font-black uppercase tracking-widest text-[10px] ml-1.5 text-black">Subject:</span>
+          <select value={subject} onChange={(e) => { setSubject(e.target.value); setEdits({}); }} className="bg-[#93c5fd] border-2 border-black p-2 font-black uppercase text-sm outline-none cursor-pointer text-black">
             {SUBJECTS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
           </select>
         </div>
       </div>
 
       {message && (
-        <div className={`p-4 border-4 border-black font-black uppercase flex items-center gap-3 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] ${message.ok ? 'bg-[#a7f3d0] text-black' : 'bg-[#fca5a5] text-black'}`}>
-          {message.ok ? <CheckCircle2 size={22} /> : <AlertCircle size={22} />} {message.text}
+        <div className={`p-3.5 border-4 border-black font-black uppercase text-sm flex items-center gap-3 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] ${message.ok ? 'bg-[#a7f3d0] text-black' : 'bg-[#fca5a5] text-black'}`}>
+          {message.ok ? <CheckCircle2 size={20} /> : <AlertCircle size={20} />} {message.text}
         </div>
       )}
 
-      <Panel className={`p-6 ${tBg(dark)}`} dark={dark}>
+      {/* Compact add-form: inputs side-by-side, action button aligned right */}
+      <Panel className={`p-5 ${tBg(dark)}`} dark={dark}>
         <SectionTitle dark={dark}>Add / Upsert Student</SectionTitle>
-        <form onSubmit={addStudent} className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <input required value={newStudent.roll_no} onChange={(e) => setNewStudent({ ...newStudent, roll_no: e.target.value })} placeholder="Roll number *" className={`border-4 border-black p-3 font-black outline-none ${dark ? 'bg-[#0f172a] text-white' : 'bg-white text-black'}`} />
-          <input value={newStudent.full_name} onChange={(e) => setNewStudent({ ...newStudent, full_name: e.target.value })} placeholder="Full name" className={`border-4 border-black p-3 font-black outline-none ${dark ? 'bg-[#0f172a] text-white' : 'bg-white text-black'}`} />
-          <input value={newStudent.class_section} onChange={(e) => setNewStudent({ ...newStudent, class_section: e.target.value })} placeholder="Class section" className={`border-4 border-black p-3 font-black outline-none ${dark ? 'bg-[#0f172a] text-white' : 'bg-white text-black'}`} />
-          <button type="submit" disabled={busy} className="flex items-center justify-center gap-2 bg-[#93c5fd] text-black font-black uppercase border-4 border-black px-4 py-3 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-all disabled:opacity-60">
-            <UserPlus size={18} /> Add
-          </button>
+        <form onSubmit={addStudent}>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <input required value={newStudent.roll_no} onChange={(e) => setNewStudent({ ...newStudent, roll_no: e.target.value })} placeholder="ROLL NUMBER *" className={`border-2 border-black p-3 text-sm font-black uppercase rounded-sm outline-none shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] focus:bg-[#fef08a] ${dark ? 'bg-[#0f172a] text-white' : 'bg-white text-black'}`} />
+            <input value={newStudent.full_name} onChange={(e) => setNewStudent({ ...newStudent, full_name: e.target.value })} placeholder="FULL NAME" className={`border-2 border-black p-3 text-sm font-black uppercase rounded-sm outline-none shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] focus:bg-[#fef08a] ${dark ? 'bg-[#0f172a] text-white' : 'bg-white text-black'}`} />
+            <input value={newStudent.class_section} onChange={(e) => setNewStudent({ ...newStudent, class_section: e.target.value })} placeholder="CLASS SECTION" className={`border-2 border-black p-3 text-sm font-black uppercase rounded-sm outline-none shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] focus:bg-[#fef08a] ${dark ? 'bg-[#0f172a] text-white' : 'bg-white text-black'}`} />
+          </div>
+          <div className="mt-3 flex justify-end">
+            <button type="submit" disabled={busy} className="flex items-center gap-2 bg-[#93c5fd] text-black font-black uppercase text-sm border-2 border-black px-6 py-3 shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-none transition-all disabled:opacity-60">
+              <UserPlus size={17} /> Add
+            </button>
+          </div>
         </form>
       </Panel>
 
@@ -696,29 +890,29 @@ function InternalsTab({ dark }) {
 
       {rows.length > 0 && (
         <>
-          <div className="overflow-x-auto border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] bg-white">
+          <div className={`overflow-x-auto border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] bg-white ${hideScrollbar}`}>
             <table className="w-full text-left whitespace-nowrap border-collapse">
               <thead>
                 <tr className="border-b-4 border-black bg-[#fef08a] text-black">
-                  <th className="p-4 font-black uppercase tracking-widest text-xs">Roll No.</th>
-                  <th className="p-4 font-black uppercase tracking-widest text-xs border-l-4 border-black">Name</th>
-                  <th className="p-4 font-black uppercase tracking-widest text-xs border-l-4 border-black text-center">ST1 (/30)</th>
-                  <th className="p-4 font-black uppercase tracking-widest text-xs border-l-4 border-black text-center">ST2 (/30)</th>
-                  <th className="p-4 font-black uppercase tracking-widest text-xs border-l-4 border-black text-center">PUT (/100)</th>
-                  <th className="p-4 font-black uppercase tracking-widest text-xs border-l-4 border-black text-center">Actions</th>
+                  <th className="p-3 font-black uppercase tracking-widest text-xs">Roll No.</th>
+                  <th className="p-3 font-black uppercase tracking-widest text-xs border-l-2 border-black">Name</th>
+                  <th className="p-3 font-black uppercase tracking-widest text-xs border-l-2 border-black text-center">ST1 (/30)</th>
+                  <th className="p-3 font-black uppercase tracking-widest text-xs border-l-2 border-black text-center">ST2 (/30)</th>
+                  <th className="p-3 font-black uppercase tracking-widest text-xs border-l-2 border-black text-center">PUT (/100)</th>
+                  <th className="p-3 font-black uppercase tracking-widest text-xs border-l-2 border-black text-center">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y-4 divide-black text-sm text-black">
+              <tbody className="divide-y-2 divide-black text-sm text-black">
                 {rows.map((s) => (
-                  <tr key={s.roll_no} className="font-black hover:bg-zinc-100 transition-colors">
-                    <td className="p-4 font-mono">{s.roll_no}</td>
-                    <td className="p-4 border-l-4 border-black">{s.full_name || '—'}</td>
-                    <td className="p-4 border-l-4 border-black text-center"><input className={inputClass} value={valueFor(s, 'st1')} onChange={(e) => setCell(s.roll_no, 'st1', e.target.value)} /></td>
-                    <td className="p-4 border-l-4 border-black text-center"><input className={inputClass} value={valueFor(s, 'st2')} onChange={(e) => setCell(s.roll_no, 'st2', e.target.value)} /></td>
-                    <td className="p-4 border-l-4 border-black text-center"><input className={inputClass} value={valueFor(s, 'put')} onChange={(e) => setCell(s.roll_no, 'put', e.target.value)} /></td>
-                    <td className="p-4 border-l-4 border-black text-center">
-                      <button onClick={() => removeStudent(s.roll_no)} className="inline-flex items-center gap-1 bg-[#fca5a5] border-2 border-black px-3 py-2 text-xs font-black uppercase hover:bg-red-400 transition-colors" disabled={busy}>
-                        <Trash2 size={14} /> Delete
+                  <tr key={s.roll_no} className={`font-black hover:bg-zinc-50 transition-colors ${edits[s.roll_no] ? 'bg-[#fef08a]/70' : ''}`}>
+                    <td className="p-3 font-mono">{s.roll_no}</td>
+                    <td className="p-3 border-l-2 border-black">{s.full_name || '—'}</td>
+                    <td className="p-3 border-l-2 border-black text-center"><input inputMode="numeric" className={inputClass} value={valueFor(s, 'st1')} onChange={(e) => setCell(s.roll_no, 'st1', e.target.value)} /></td>
+                    <td className="p-3 border-l-2 border-black text-center"><input inputMode="numeric" className={inputClass} value={valueFor(s, 'st2')} onChange={(e) => setCell(s.roll_no, 'st2', e.target.value)} /></td>
+                    <td className="p-3 border-l-2 border-black text-center"><input inputMode="numeric" className={inputClass} value={valueFor(s, 'put')} onChange={(e) => setCell(s.roll_no, 'put', e.target.value)} /></td>
+                    <td className="p-3 border-l-2 border-black text-center">
+                      <button onClick={() => removeStudent(s.roll_no)} className="inline-flex items-center gap-1 bg-[#fca5a5] border-2 border-black px-2.5 py-1.5 text-xs font-black uppercase hover:bg-[#f87171] transition-colors" disabled={busy}>
+                        <Trash2 size={13} /> Delete
                       </button>
                     </td>
                   </tr>
@@ -728,12 +922,12 @@ function InternalsTab({ dark }) {
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex gap-3">
-              <button disabled={page.offset === 0} onClick={() => { setEdits({}); setPage((p) => ({ ...p, offset: Math.max(0, p.offset - p.limit) })); }} className="px-5 py-2 font-black uppercase border-4 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] disabled:opacity-40 hover:-translate-y-0.5 transition-transform text-black">Prev</button>
-              <button disabled={page.offset + page.limit >= (pageData.total || 0)} onClick={() => { setEdits({}); setPage((p) => ({ ...p, offset: p.offset + p.limit })); }} className="px-5 py-2 font-black uppercase border-4 border-black bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] disabled:opacity-40 hover:-translate-y-0.5 transition-transform text-black">Next</button>
+            <div className="flex gap-2.5">
+              <button disabled={page.offset === 0} onClick={() => { setEdits({}); setPage((p) => ({ ...p, offset: Math.max(0, p.offset - p.limit) })); }} className="px-4 py-2 font-black uppercase text-sm border-2 border-black bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] disabled:opacity-40 hover:-translate-y-0.5 transition-transform text-black">Prev</button>
+              <button disabled={page.offset + page.limit >= (pageData.total || 0)} onClick={() => { setEdits({}); setPage((p) => ({ ...p, offset: p.offset + p.limit })); }} className="px-4 py-2 font-black uppercase text-sm border-2 border-black bg-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] disabled:opacity-40 hover:-translate-y-0.5 transition-transform text-black">Next</button>
             </div>
-            <button onClick={saveAll} disabled={busy || !dirtyRolls.length} className="px-8 py-4 bg-[#a7f3d0] text-black font-black uppercase text-lg border-4 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-none transition-all disabled:opacity-50 flex items-center gap-3">
-              {busy ? <Loader2 className="animate-spin" size={20} /> : <CheckCircle2 size={20} />}
+            <button onClick={saveAll} disabled={busy || !dirtyRolls.length} className="px-6 py-3.5 bg-[#a7f3d0] text-black font-black uppercase text-sm border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-none transition-all disabled:opacity-50 flex items-center gap-2.5">
+              {busy ? <Loader2 className="animate-spin" size={18} /> : <CheckCircle2 size={18} />}
               Save & Publish ({dirtyRolls.length})
             </button>
           </div>
@@ -777,46 +971,54 @@ function MentorshipHubTab({ dark, onInspect }) {
   if (studentsReq.error && !rows.length) return <ErrorBlock error={studentsReq.error} onRetry={studentsReq.run} dark={dark} />;
 
   return (
-    <div className="w-full space-y-8">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 border-b-4 border-black pb-4">
+    <div className="w-full space-y-6">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-5 border-b-4 border-black pb-4">
         <div>
-          <h2 className="text-4xl md:text-5xl font-black uppercase tracking-tight mb-2">Mentorship Hub</h2>
-          <p className={`text-sm font-black uppercase tracking-widest ${dark ? 'text-zinc-400' : 'text-zinc-500'}`}>
+          <h2 className="text-2xl md:text-4xl font-black uppercase tracking-tight mb-1.5">Mentorship Hub</h2>
+          <p className={`text-xs font-extrabold uppercase tracking-widest ${dark ? 'text-zinc-400' : 'text-zinc-500'}`}>
             Analyze a student to pull AI-assigned mentors & peers from the engine.
           </p>
+        </div>
+        <div className="flex items-center gap-2.5">
+          <span className="flex items-center gap-1.5 border-2 border-black bg-white text-black px-3 py-2 font-black uppercase text-xs shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+            <Search size={13} strokeWidth={3} /> Analyzed {Object.keys(dossiers).length}
+          </span>
+          <span className="flex items-center gap-1.5 border-2 border-black bg-[#a7f3d0] text-black px-3 py-2 font-black uppercase text-xs shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+            <CalendarCheck size={13} strokeWidth={3} /> Scheduled {Object.values(scheduled).filter((v) => v === 'done').length}
+          </span>
         </div>
       </div>
 
       {!rows.length && <EmptyBlock dark={dark} message="No students returned." />}
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-8 w-full">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 w-full">
         {rows.map((s) => {
           const dossier = dossiers[s.roll_no];
           const analysis = dossier?.analysis;
           const weak = analysis ? weakAreas(analysis) : [];
           return (
-            <Panel key={s.roll_no} className={`p-6 ${tBg(dark)} flex flex-col gap-4`} dark={dark}>
-              <div className="flex gap-4 items-center border-b-4 border-black pb-4">
-                <div className="w-14 h-14 bg-black text-white flex items-center justify-center font-black text-2xl border-4 border-black shrink-0">
+            <Panel key={s.roll_no} className={`p-5 ${tBg(dark)} flex flex-col gap-4`} dark={dark}>
+              <div className="flex gap-3 items-center border-b-4 border-black pb-3.5">
+                <div className="w-11 h-11 bg-black text-white flex items-center justify-center font-black text-lg border-2 border-black shrink-0">
                   {(s.full_name || '?').charAt(0).toUpperCase()}
                 </div>
                 <div className="min-w-0">
-                  <h3 className="text-xl font-black uppercase leading-none truncate">{s.full_name || 'Unknown'}</h3>
-                  <p className="font-black font-mono text-zinc-500 mt-1 text-xs">{s.roll_no} {s.class_section ? `| ${s.class_section}` : ''}</p>
+                  <h3 className="text-xl md:text-2xl font-black uppercase leading-none truncate">{s.full_name || 'Unknown'}</h3>
+                  <p className="font-black font-mono text-zinc-500 mt-1 text-sm md:text-base">{s.roll_no} {s.class_section ? `| ${s.class_section}` : ''}</p>
                 </div>
-                <div className="ml-auto flex flex-col items-end gap-2">
+                <div className="ml-auto flex flex-col items-end gap-1.5 shrink-0">
                   {analysis && <RiskBadge riskLevel={analysis.risk_level} />}
                   <button onClick={() => onInspect(s.roll_no)} className="text-[10px] font-black uppercase underline">Full view</button>
                 </div>
               </div>
 
               {!dossier && (
-                <button onClick={() => analyze(s.roll_no)} disabled={busyRoll === s.roll_no} className="w-full py-3 border-4 border-black font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center justify-center gap-2 bg-[#c4b5fd] text-black hover:-translate-y-0.5 disabled:opacity-60">
-                  {busyRoll === s.roll_no ? <><Loader2 className="animate-spin" size={18} /> Analyzing…</> : <><Search size={18} /> Analyze</>}
+                <button onClick={() => analyze(s.roll_no)} disabled={busyRoll === s.roll_no} className="w-full py-2.5 border-2 border-black font-black uppercase text-sm shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center justify-center gap-2 bg-[#c4b5fd] text-black hover:-translate-y-0.5 disabled:opacity-60">
+                  {busyRoll === s.roll_no ? <><Loader2 className="animate-spin" size={16} /> Analyzing…</> : <><Search size={16} /> Analyze</>}
                 </button>
               )}
 
-              {dossier?.error && <div className="p-3 bg-[#fca5a5] border-4 border-black text-black font-bold text-sm">{dossier.error.message}</div>}
+              {dossier?.error && <div className="p-3 bg-[#fca5a5] border-2 border-black text-black font-bold text-xs">{dossier.error.message}</div>}
 
               {analysis && (
                 <>
@@ -825,22 +1027,27 @@ function MentorshipHubTab({ dark, onInspect }) {
                     <MiniStat label="Avg" value={analysis.academic_metrics?.average_percentage != null ? `${fmt(analysis.academic_metrics.average_percentage, 0)}%` : '—'} />
                     <MiniStat label="Weak" value={weak.length} />
                   </div>
-                  <div className={`space-y-2 max-h-56 overflow-y-auto pr-1 ${hideScrollbar}`}>
+
+                  {/* Detail blocks — larger fonts, generous padding */}
+                  <div className="grid grid-cols-2 gap-2">
                     {weak.length ? weak.slice(0, 4).map((w, i) => (
-                      <div key={i} className="border-2 border-black p-2 text-black bg-white text-xs">
-                        <span className="font-black uppercase">{w.displayName}</span> · {fmt(w.score_pct, 1)}%
-                        <span className="block font-bold opacity-70 mt-0.5">
-                          Mentor: {w.mentor?.name || '—'} {w.peer_mentor?.name ? `· Peer: ${w.peer_mentor.name}` : ''}
-                        </span>
+                      <div key={i} className="relative overflow-hidden border-2 border-black p-4 text-black bg-white flex flex-col justify-center shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+                        <span className="absolute -right-1 -top-3 text-4xl leading-none font-black opacity-10 pointer-events-none select-none">{fmt(w.score_pct, 0)}</span>
+                        <p className="relative text-lg font-black uppercase truncate">{w.displayName}</p>
+                        <p className="relative text-2xl font-black">{fmt(w.score_pct, 1)}%</p>
+                        <p className="relative text-sm font-bold mt-1.5">Mentor: {w.mentor?.name || '—'}</p>
+                        {w.peer_mentor?.name && <p className="relative text-sm font-bold">Peer: {w.peer_mentor.name}</p>}
+                        {w.reason && <p className="relative text-sm font-bold leading-snug mt-1.5 text-black/70">{w.reason}</p>}
                       </div>
-                    )) : <p className="text-xs font-black uppercase text-emerald-600">No weak areas.</p>}
+                    )) : <div className="col-span-2"><p className="text-xs font-black uppercase text-emerald-600">No weak areas.</p></div>}
                   </div>
+
                   <button
                     onClick={() => schedule(s.roll_no)}
                     disabled={scheduled[s.roll_no] === 'done'}
-                    className={`w-full py-3 border-4 border-black font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center justify-center gap-2 ${scheduled[s.roll_no] === 'done' ? 'bg-[#a7f3d0] text-black shadow-none translate-y-1 translate-x-1' : 'bg-[#fde047] text-black hover:-translate-y-0.5'}`}
+                    className={`w-full py-2.5 border-2 border-black font-black uppercase text-sm shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] transition-all flex items-center justify-center gap-2 ${scheduled[s.roll_no] === 'done' ? 'bg-[#a7f3d0] text-black shadow-none translate-y-1 translate-x-1' : 'bg-[#fef08a] text-black hover:-translate-y-0.5'}`}
                   >
-                    {scheduled[s.roll_no] === 'loading' ? 'Scheduling…' : scheduled[s.roll_no] === 'done' ? '✅ Scheduled' : <><CalendarCheck size={18} /> Schedule Meet</>}
+                    {scheduled[s.roll_no] === 'loading' ? 'Scheduling…' : scheduled[s.roll_no] === 'done' ? '✅ Scheduled' : <><CalendarCheck size={16} /> Schedule Meet</>}
                   </button>
                 </>
               )}
@@ -854,9 +1061,9 @@ function MentorshipHubTab({ dark, onInspect }) {
 
 function MiniStat({ label, value }) {
   return (
-    <div className="border-2 border-black bg-white text-black p-2">
-      <p className="text-[9px] font-black uppercase tracking-widest opacity-60">{label}</p>
-      <p className="text-lg font-black">{value}</p>
+    <div className="border-2 border-black bg-white text-black p-3 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+      <p className="text-xs font-black uppercase tracking-widest opacity-60">{label}</p>
+      <p className="text-xl md:text-2xl font-black">{value}</p>
     </div>
   );
 }
@@ -865,40 +1072,61 @@ function MiniStat({ label, value }) {
 /* MODALS                                                              */
 /* ================================================================== */
 function ProfileModal({ identity, onClose, dark, bgCard }) {
-  const inputClass = `w-full border-4 border-black p-4 text-lg font-black focus:bg-[#fef08a] outline-none shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] mb-6 ${dark ? 'bg-[#0f172a] text-white' : 'bg-[#f4f4f5] text-black'}`;
+  const inputClass = `w-full border-2 border-black p-3.5 text-base font-black rounded-sm focus:bg-[#fef08a] outline-none shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] mb-6 ${dark ? 'bg-[#0f172a] text-white' : 'bg-white text-black'}`;
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[100] p-4 overflow-y-auto">
-      <div className={`w-full max-w-3xl p-10 border-4 border-black ${bgCard} shadow-[16px_16px_0px_0px_rgba(0,0,0,1)] my-8`}>
-        <div className="flex justify-between items-center mb-10 border-b-4 border-black pb-4">
-          <h2 className="text-4xl font-black uppercase">Edit Faculty Profile</h2>
-          <button onClick={onClose} className="border-4 border-black p-2 hover:bg-red-500 hover:text-white transition-colors"><X size={32} strokeWidth={3} /></button>
+    <div className={`fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[100] p-4 overflow-y-auto ${hideScrollbar}`}>
+      <div className={`w-full max-w-3xl p-8 border-4 border-black ${bgCard} shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] my-8`}>
+        <div className="flex justify-between items-center mb-8 border-b-4 border-black pb-4">
+          <h2 className="text-2xl md:text-3xl font-black uppercase">Edit Faculty Profile</h2>
+          <button onClick={onClose} className="border-2 border-black p-1.5 hover:bg-red-500 hover:text-white transition-colors"><X size={26} strokeWidth={3} /></button>
         </div>
         <form className="grid grid-cols-1 md:grid-cols-2 gap-x-8" onSubmit={(e) => { e.preventDefault(); onClose(); }}>
-          <div><label className="block text-sm font-black uppercase tracking-widest mb-3 opacity-70">Full Name</label><input type="text" defaultValue={identity?.full_name} className={inputClass} /></div>
-          <div><label className="block text-sm font-black uppercase tracking-widest mb-3 opacity-70">Faculty Code</label><input type="text" defaultValue={identity?.faculty_code} disabled className={`${inputClass} opacity-50 cursor-not-allowed`} /></div>
-          <div><label className="block text-sm font-black uppercase tracking-widest mb-3 opacity-70">Phone Number</label><input type="tel" defaultValue={identity?.phone} className={inputClass} /></div>
-          <div><label className="block text-sm font-black uppercase tracking-widest mb-3 opacity-70">Department</label><input type="text" defaultValue={identity?.department} className={inputClass} /></div>
-          <div className="md:col-span-2"><label className="block text-sm font-black uppercase tracking-widest mb-3 opacity-70">Email</label><input type="email" defaultValue={identity?.email} disabled className={`${inputClass} opacity-50 cursor-not-allowed`} /></div>
-          <button type="submit" className="md:col-span-2 py-6 mt-2 bg-[#a7f3d0] text-black font-black text-2xl uppercase border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-none transition-all">Save Changes</button>
+          <div><label className="block text-xs font-black uppercase tracking-widest mb-2 opacity-70">Full Name</label><input type="text" defaultValue={identity?.full_name} className={inputClass} /></div>
+          <div><label className="block text-xs font-black uppercase tracking-widest mb-2 opacity-70">Faculty Code</label><input type="text" defaultValue={identity?.faculty_code} disabled className={`${inputClass} opacity-50 cursor-not-allowed`} /></div>
+          <div><label className="block text-xs font-black uppercase tracking-widest mb-2 opacity-70">Phone Number</label><input type="tel" defaultValue={identity?.phone} className={inputClass} /></div>
+          <div><label className="block text-xs font-black uppercase tracking-widest mb-2 opacity-70">Department</label><input type="text" defaultValue={identity?.department} className={inputClass} /></div>
+          <div className="md:col-span-2"><label className="block text-xs font-black uppercase tracking-widest mb-2 opacity-70">Email</label><input type="email" defaultValue={identity?.email} disabled className={`${inputClass} opacity-50 cursor-not-allowed`} /></div>
+          <button type="submit" className="md:col-span-2 py-4 mt-2 bg-[#a7f3d0] text-black font-black text-lg uppercase border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-none transition-all">Save Changes</button>
         </form>
       </div>
     </div>
   );
 }
 
-function SettingsModal({ onClose, isDarkMode, setIsDarkMode, bgCard }) {
+function SettingsModal({ onClose, onEditProfile, isDarkMode, setIsDarkMode, bgCard }) {
+  const [pushAlerts, setPushAlerts] = useState(true);
+
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[100] p-4">
-      <div className={`w-full max-w-lg p-10 border-4 border-black ${bgCard} shadow-[16px_16px_0px_0px_rgba(0,0,0,1)]`}>
-        <div className="flex justify-between items-center mb-8 border-b-4 border-black pb-4">
-          <h2 className="text-3xl font-black uppercase">App Settings</h2>
-          <button onClick={onClose} className="border-4 border-black p-2 hover:bg-red-500 hover:text-white transition-colors"><X size={32} strokeWidth={3} /></button>
+      <div className={`w-full max-w-lg p-8 border-4 border-black ${bgCard} shadow-[10px_10px_0px_0px_rgba(0,0,0,1)]`}>
+        <div className="flex justify-between items-center mb-6 border-b-4 border-black pb-4">
+          <h2 className="text-2xl font-black uppercase">App Settings</h2>
+          <button onClick={onClose} className="border-2 border-black p-1.5 hover:bg-red-500 hover:text-white transition-colors"><X size={26} strokeWidth={3} /></button>
         </div>
-        <p className="font-black text-base mb-8 uppercase text-zinc-500">Toggle the theme engine below, or use the Sun/Moon icon in the top bar.</p>
-        <button onClick={() => setIsDarkMode(!isDarkMode)} className="w-full py-5 mb-4 bg-[#c4b5fd] text-black font-black text-xl uppercase border-4 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-none transition-all">
-          Toggle {isDarkMode ? 'Light' : 'Dark'} Mode
-        </button>
-        <button onClick={onClose} className="w-full py-5 bg-[#fef08a] text-black font-black text-xl uppercase border-4 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:translate-y-1 hover:translate-x-1 hover:shadow-none transition-all">Close Panel</button>
+
+        <div className="space-y-3.5">
+          <Toggle
+            on={isDarkMode}
+            onChange={() => setIsDarkMode(!isDarkMode)}
+            label="Dark Mode"
+            hint="Switch between light & dark theme"
+          />
+          <Toggle
+            on={pushAlerts}
+            onChange={() => setPushAlerts(!pushAlerts)}
+            label="Push Alerts"
+            hint="Enable notifications for at-risk students"
+          />
+          <button
+            onClick={onEditProfile}
+            className="w-full flex items-center gap-3 border-2 border-black px-4 py-3.5 bg-[#93c5fd] text-black font-black uppercase text-sm shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 transition-all"
+          >
+            <Edit3 size={18} strokeWidth={3} /> Edit Profile
+            <span className="ml-auto text-[10px] font-black uppercase opacity-70">Account settings →</span>
+          </button>
+        </div>
+
+        <button onClick={onClose} className="w-full py-3.5 mt-4 bg-[#fef08a] text-black font-black text-base uppercase border-2 border-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:translate-y-0.5 hover:translate-x-0.5 hover:shadow-none transition-all">Close Panel</button>
       </div>
     </div>
   );
