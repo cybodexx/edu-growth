@@ -3,7 +3,7 @@ import {
   X, LayoutDashboard, Search, FileSignature, Users, LogOut, Sun, Moon,
   Settings, Edit3, AlertCircle, TrendingUp, CalendarCheck, ShieldAlert,
   UserPlus, BookOpen, CheckCircle2, Loader2, RefreshCw,
-  Wifi, WifiOff, Trash2, Download, FileText, Target,
+  Wifi, WifiOff, Trash2, Download, FileText, Target, Menu,
 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -126,6 +126,7 @@ function Toggle({ on, onChange, label, hint }) {
 /* ================================================================== */
 export default function Teacher({ identity, onLogout }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
@@ -164,8 +165,20 @@ export default function Teacher({ identity, onLogout }) {
         <span className="ml-[-100px]">ANALYTICS</span>
       </div>
 
-      {/* SIDEBAR — the branding area below is the ONLY collapse/expand toggle */}
-      <div className={`${t.bgCard} ${t.borderTheme} border-y-0 border-l-0 flex flex-col z-20 transition-all duration-300 ${isSidebarOpen ? 'w-64' : 'w-24'}`}>
+      {/* MOBILE DRAWER BACKDROP */}
+      {mobileNavOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-black/50 lg:hidden"
+          onClick={() => setMobileNavOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* SIDEBAR — off-canvas drawer below lg, static rail on desktop.
+          The branding area below is the ONLY desktop collapse/expand toggle. */}
+      <div
+        className={`${t.bgCard} ${t.borderTheme} border-y-0 border-l-0 flex flex-col fixed inset-y-0 left-0 z-40 h-screen w-64 transform transition-all duration-300 lg:static lg:z-20 lg:translate-x-0 ${isSidebarOpen ? 'lg:w-64' : 'lg:w-24'} ${mobileNavOpen ? 'translate-x-0' : '-translate-x-full'}`}
+      >
         <button
           onClick={() => setIsSidebarOpen(!isSidebarOpen)}
           title={isSidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
@@ -182,7 +195,7 @@ export default function Teacher({ identity, onLogout }) {
           {navItems.map((item) => (
             <button
               key={item.id}
-              onClick={() => setActiveTab(item.id)}
+              onClick={() => { setActiveTab(item.id); setMobileNavOpen(false); }}
               className={`flex items-center gap-3 p-3 font-black uppercase text-sm tracking-wider transition-all whitespace-nowrap overflow-hidden border-2 ${
                 activeTab === item.id
                   ? 'bg-[#c4b5fd] text-black border-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)]'
@@ -199,8 +212,17 @@ export default function Teacher({ identity, onLogout }) {
 
       {/* MAIN */}
       <div className="flex-1 flex flex-col h-screen overflow-hidden relative z-10">
-        <header className={`h-20 border-b-4 border-black flex items-center justify-between px-6 xl:px-10 shrink-0 bg-gradient-to-r ${isDarkMode ? 'from-slate-900 via-indigo-950 to-black' : 'from-[#93c5fd] via-[#e9d5ff] to-[#fca5a5]'}`}>
-          <ApiStatusChip online={apiOnline} loading={studentsReq.loading} dark={isDarkMode} />
+        <header className={`h-20 border-b-4 border-black flex items-center justify-between px-4 sm:px-6 xl:px-10 shrink-0 bg-gradient-to-r ${isDarkMode ? 'from-slate-900 via-indigo-950 to-black' : 'from-[#93c5fd] via-[#e9d5ff] to-[#fca5a5]'}`}>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setMobileNavOpen(true)}
+              className={`lg:hidden p-2.5 border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 transition-all ${isDarkMode ? 'bg-[#18181b] text-white' : 'bg-white text-black'}`}
+              aria-label="Open navigation"
+            >
+              <Menu size={22} strokeWidth={3} />
+            </button>
+            <ApiStatusChip online={apiOnline} loading={studentsReq.loading} dark={isDarkMode} />
+          </div>
 
           <div className="flex items-center gap-4 ml-auto">
             <button onClick={() => setIsDarkMode(!isDarkMode)} className={`p-2.5 border-2 border-black shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 transition-all ${isDarkMode ? 'bg-[#18181b] text-[#86efac]' : 'bg-white text-black'}`}>

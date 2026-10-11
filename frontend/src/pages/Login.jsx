@@ -216,7 +216,7 @@ export default function Login({ onLogin }) {
   };
 
   return (
-    <div className="relative h-screen w-full overflow-hidden font-sans" style={{ backgroundColor: colors.navy }}>
+    <div className="relative min-h-screen w-full overflow-x-hidden font-sans" style={{ backgroundColor: colors.navy }}>
       
       {/* Background */}
       <div 
@@ -233,8 +233,8 @@ export default function Login({ onLogin }) {
         }}
       />
 
-      {/* Main Container - No Scroll */}
-      <div className="relative z-20 h-full max-w-[1400px] mx-auto flex flex-col lg:flex-row items-center justify-center gap-8 lg:gap-12 px-5 sm:px-8 py-6">
+      {/* Main Container - scrolls vertically on small / short screens */}
+      <div className="relative z-20 min-h-screen max-w-[1400px] mx-auto flex flex-col lg:flex-row items-center justify-center gap-8 lg:gap-12 px-5 sm:px-8 py-8">
         
         {/* ===================== LEFT: BRANDING ===================== */}
         <div className="w-full lg:w-[52%] flex flex-col justify-center">

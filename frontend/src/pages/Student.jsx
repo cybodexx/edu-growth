@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Calculator, CalendarCheck, Users, LogOut, GraduationCap,
   Sun, Moon, Settings, Edit3, Clock, CheckCircle2, RotateCcw,
   AlertTriangle, Zap, User, BarChart2, ShieldAlert,
-  RefreshCw, Wifi, WifiOff, Loader2, Printer,
+  RefreshCw, Wifi, WifiOff, Loader2, Printer, Menu,
 } from 'lucide-react';
 import {
   PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -32,6 +32,7 @@ const profileFirstName = (name) => String(name || 'Student').split(' ')[0];
 /* ================================================================== */
 export default function Student({ identity, onLogout }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
@@ -77,8 +78,19 @@ export default function Student({ identity, onLogout }) {
         <span className="ml-[-100px]">ANALYTICS</span>
       </div>
 
-      {/* SIDEBAR */}
-      <div className={`${t.bgCard} ${t.borderTheme} border-y-0 border-l-0 flex flex-col z-20 transition-all duration-300 ${isSidebarOpen ? 'w-72' : 'w-20'}`}>
+      {/* MOBILE DRAWER BACKDROP */}
+      {mobileNavOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-black/50 lg:hidden"
+          onClick={() => setMobileNavOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* SIDEBAR — off-canvas drawer below lg, static rail on desktop */}
+      <div
+        className={`${t.bgCard} ${t.borderTheme} border-y-0 border-l-0 flex flex-col fixed inset-y-0 left-0 z-40 h-screen w-72 transform transition-all duration-300 lg:static lg:z-20 lg:translate-x-0 ${isSidebarOpen ? 'lg:w-72' : 'lg:w-20'} ${mobileNavOpen ? 'translate-x-0' : '-translate-x-full'}`}
+      >
         <div
           onClick={() => setIsSidebarOpen(!isSidebarOpen)}
           className="h-24 border-b-4 border-black flex items-center justify-center overflow-hidden shrink-0 bg-[#fef08a] cursor-pointer hover:bg-[#fde047] transition-colors"
@@ -98,7 +110,7 @@ export default function Student({ identity, onLogout }) {
           {navItems.map((item) => (
             <button
               key={item.id}
-              onClick={() => setActiveTab(item.id)}
+              onClick={() => { setActiveTab(item.id); setMobileNavOpen(false); }}
               className={`flex items-center gap-4 p-4 font-black uppercase tracking-wider transition-all whitespace-nowrap overflow-hidden border-4 border-transparent ${
                 activeTab === item.id
                   ? 'bg-[#c4b5fd] text-black border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
@@ -115,8 +127,15 @@ export default function Student({ identity, onLogout }) {
 
       {/* MAIN CONTENT */}
       <div className="flex-1 flex flex-col h-screen overflow-hidden relative z-10">
-        <header className={`h-24 border-b-4 border-black flex items-center justify-between px-6 xl:px-10 shrink-0 bg-gradient-to-r ${isDarkMode ? 'from-slate-900 via-indigo-950 to-black' : 'from-[#e0e7ff] via-[#fef08a] to-[#dcfce3]'}`}>
+        <header className={`h-24 border-b-4 border-black flex items-center justify-between px-4 sm:px-6 xl:px-10 shrink-0 bg-gradient-to-r ${isDarkMode ? 'from-slate-900 via-indigo-950 to-black' : 'from-[#e0e7ff] via-[#fef08a] to-[#dcfce3]'}`}>
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => setMobileNavOpen(true)}
+              className={`lg:hidden p-3 border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-0.5 transition-all ${isDarkMode ? 'bg-[#1e293b] text-white' : 'bg-white text-black'}`}
+              aria-label="Open navigation"
+            >
+              <Menu size={24} strokeWidth={3} />
+            </button>
             <div className="hidden sm:flex items-center gap-3 bg-black text-white px-4 py-3 border-4 border-white shadow-[4px_4px_0px_0px_rgba(255,255,255,1)] ml-2">
               <Zap size={18} className="text-yellow-400" />
               <span className="font-black uppercase tracking-widest text-sm">Student Workspace</span>
@@ -407,7 +426,7 @@ function MarksTab({ analysis, dark }) {
           <select
             value={activeSubject?.subject || ''}
             onChange={(e) => setSelected(e.target.value)}
-            className="bg-[#fef08a] text-black border-4 border-black p-3 text-lg font-black outline-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer w-fit"
+            className="bg-[#fef08a] text-black border-4 border-black p-3 text-lg font-black outline-none shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] cursor-pointer w-full sm:w-fit max-w-full"
           >
             {subjects.map((s) => (
               <option key={s.subject} value={s.subject}>{s.label || s.subject}</option>
@@ -436,7 +455,7 @@ function MarksTab({ analysis, dark }) {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-12 w-full">
-        <div className={`p-8 border-4 border-black ${t_bg(dark)} shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]`}>
+        <div className={`min-w-0 p-8 border-4 border-black ${t_bg(dark)} shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]`}>
           <h3 className="text-2xl font-black uppercase mb-6 border-b-4 border-black pb-2 inline-block">Component Breakdown</h3>
           {activeSubject ? (
             <div className="space-y-5">
@@ -461,17 +480,17 @@ function MarksTab({ analysis, dark }) {
         </div>
 
         {/* Lab Assessments (grid tiles) */}
-        <div className={`p-8 border-4 border-black ${t_bg(dark)} shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]`}>
+        <div className={`min-w-0 p-8 border-4 border-black ${t_bg(dark)} shadow-[6px_6px_0px_0px_rgba(0,0,0,1)]`}>
           <h3 className="text-2xl font-black uppercase mb-6 border-b-4 border-black pb-2 inline-block">Lab Assessments</h3>
           {analysis.labs?.length ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {analysis.labs.map((lab, i) => (
                 <div key={i} className="flex flex-col justify-between gap-4 bg-[#a7f3d0] border-4 border-black p-6 text-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-y-1 transition-transform">
                   <span className="text-2xl font-black uppercase">{lab.label || lab.lab}</span>
-                  <div className="flex justify-between items-center gap-3">
+                  <div className="flex flex-wrap justify-between items-center gap-3">
                     <span className="text-3xl font-black bg-white border-4 border-black px-4 py-2">{fmt(lab.score_pct, 1)}%</span>
                     {lab.parts?.length > 0 && (
-                      <div className="flex flex-wrap gap-2 justify-end">
+                      <div className="flex flex-wrap gap-2 justify-end min-w-0">
                         {lab.parts.map((p, j) => (
                           <span key={j} className="text-[10px] font-black uppercase tracking-widest border-2 border-black px-2 py-1" style={{ backgroundColor: statusColor(p.status) }}>
                             {p.part}: {fmt(p.score_pct, 1)}%
