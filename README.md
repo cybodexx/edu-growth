@@ -1,3 +1,21 @@
+
+<h1 align="center">
+  <strong>LAWDEEE KAA MLCOE</strong>
+</h1>
+
+<h1 align="center">
+  <strong>AMAN KI MA CHODUNGA</strong>
+</h1>
+
+<h1 align="center">
+  <strong>YAD RHKNA 💀</strong>
+</h1>
+
+<p align="center">
+  <strong>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</strong>
+</p>
+
+
 # EduGrowth
 
 EduGrowth is an end-to-end student-performance platform made of **three**
