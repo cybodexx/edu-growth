@@ -1,21 +1,4 @@
 
-<h1 align="center">
-  <strong>LAWDEEE KAA MLCOE</strong>
-</h1>
-
-<h1 align="center">
-  <strong>AMAN KI MA CHODUNGA</strong>
-</h1>
-
-<h1 align="center">
-  <strong>YAD RHKNA 💀</strong>
-</h1>
-
-<p align="center">
-  <strong>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</strong>
-</p>
-
-
 # EduGrowth
 
 EduGrowth is an end-to-end student-performance platform made of **three**
@@ -70,14 +53,9 @@ npm run dev                                 # http://localhost:5173
 
 - **Students** identify themselves by 12-digit roll number (or email).
   - Self-registered students log in with the password they chose (bcrypt-hashed).
-  - Roster students imported from the roll-number list have no stored password;
-    their password is derived by the backend as `<full name>@123`
-    (e.g. `Aarav Rao@123`).
-  - Roster students whose name is blank or `Unknown` in the source data are
-    imported with the **roll number as the name**, so their password is
-    `<roll_no>@123` (e.g. `210029013131@123`).
-- **Faculty** log in with `email` + password. The seeded admin account is
-  `faculty@college.edu` / `teacher123` (change it for any real deployment). The
+  - Imported roster accounts follow the authentication policy configured by the backend. Use a secure activation or credential flow before using this with real student data.
+  - Incomplete roster records should be reviewed during import; avoid using student identifiers as passwords.
+- **Faculty** log in with `email` + password. A seeded faculty account may be configured for local development; set a unique secret and disable or replace development credentials before deployment. The
   Faculty dashboard reads the **whole roster from the analytics API**, so one
   teacher login can see every student.
 - **Password reset** emails a `FRONTEND_URL/reset-password?token=...` link; the
