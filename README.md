@@ -238,7 +238,7 @@ sequenceDiagram
     alt self-registered (bcrypt hash stored)
         AU->>AU: bcrypt.compare(password, hash)
     else roster import (no stored hash)
-        AU->>AU: case-insensitive match "<name>@123"
+        AU->>AU: validate the submitted password using the configured authentication policy
     end
     alt valid
         AU->>AU: sign JWT { id, role: student }
@@ -479,7 +479,7 @@ the two in step:
 flowchart LR
     NEON[("Neon students")] -->|"python -m scripts.export_roster_csv roster.csv<br/>(roll_no, name)"| CSV["roster.csv"]
     CSV -->|"node scripts/importStudents.js roster.csv --apply --unknown-as-roll<br/>(dry-run by default, insert-only)"| MONGO[("MongoDB students")]
-    MONGO --> LOGIN["student login<br/>password = name@123<br/>or roll_no@123 if name was blank/Unknown"]
+    MONGO --> LOGIN["student login<br/>verify securely configured credentials"]
 ```
 
 ---
@@ -590,7 +590,7 @@ Everything else is wired automatically:
    ```bash
    curl -X POST https://edu-growth-auth.onrender.com/api/faculty/register \
      -H "Content-Type: application/json" \
-     -d '{"name":"Rajesh Verma","email":"faculty@college.edu","password":"teacher123"}'
+     -d '{"name":"Example Faculty","email":"faculty@example.edu","password":"REPLACE_WITH_A_STRONG_UNIQUE_SECRET"}'
    ```
 3. **Copy the roster into MongoDB** so students can log in (run locally — see the
    *Roster sync* section above, pointing `MONGO_URI` at the Atlas cluster).
